@@ -1,0 +1,12 @@
+code on github, approx 200mb
+easy setup, only g++ under linux
+1-3min compile time for complete project
+includes unittests
++- readable code, doxy comments
+class organization
+
+
+
+
+
+types: lib/tokenize.cpp line 2185ff
