@@ -57,6 +57,7 @@ public:
         CCheckStyle cChecker( p_Tokenizer, p_Settings, p_ErrorLogger );
 
         //ds execute checks
+        //cChecker.dumpTokens( );
         cChecker.checkNames( );
     }
 
@@ -87,6 +88,9 @@ private:
 //ds methods
 private:
 
+    //ds displays all parsed tokens
+    void dumpTokens( );
+
     //ds check names (only one function for higher efficiency since we only have to loop once through all tokens)
     void checkNames( );
     void checkNamesError( const Token* p_Token, const std::string p_strErrorInformation, const Severity::SeverityType p_cSeverity );
@@ -94,15 +98,22 @@ private:
 //ds helpers
 private:
 
-    //ds prefix checking
+    //ds prefix checking for variables and functions
+    void checkPrefix( const Token* p_pcToken, const Function* p_pcFunction, const std::string p_strFunctionScopePrefix = "function" );
     void checkPrefix( const Token* p_pcToken, const Variable* p_pcVariable, const std::string p_strVariableScopePrefix = "variable" );
+
+    //ds check assertions
+    void checkAssertion( const Token* p_pcToken );
 
     //ds retrieves the complete variable type consisting of multiple tokens (e.g std::string)
     const std::string _getVariableType( const Variable* p_pcVariable ) const;
 
+    //ds returns a filtered version of the variable type (without *'s and &'s)
+    const std::string _filterVariableType( const std::string p_strType ) const;
+
     //ds check vectors (overloaded for easy readability)
-    bool _isAlreadyParsed( std::vector< Function >& p_vecFunctionList, const Function* p_cFunction ) const;
-    bool _isAlreadyParsed( std::vector< Variable >& p_vecVariableList, const Variable* p_cVariable ) const;
+    bool _isChecked( const Function* p_cFunction ) const;
+    bool _isChecked( const Variable* p_cVariable ) const;
 
 //ds attributes
 private:
