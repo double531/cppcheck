@@ -103,7 +103,7 @@ private:
     void checkPrefix( const Token* p_pcToken, const Variable* p_pcVariable, const std::string p_strVariableScopePrefix = "variable" );
 
     //ds check assertions
-    void checkAssertion( const Token* p_pcToken );
+    void checkAssert( const Token* p_pcToken );
 
     //ds retrieves the complete variable type consisting of multiple tokens (e.g std::string)
     const std::string _getVariableType( const Variable* p_pcVariable ) const;
