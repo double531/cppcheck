@@ -102,8 +102,9 @@ private:
     void checkPrefix( const Token* p_pcToken, const Function* p_pcFunction, const std::string p_strFunctionScopePrefix = "function" );
     void checkPrefix( const Token* p_pcToken, const Variable* p_pcVariable, const std::string p_strVariableScopePrefix = "variable" );
 
-    //ds check assertions
+    //ds check assertions and boost pointer arguments
     void checkAssert( const Token* p_pcToken );
+    void checkBoostPointer( const Token* p_pcToken );
 
     //ds identify boost::shared_ptrs and arrays
     bool _isBoostPointer( const std::string strTypeName ) const;

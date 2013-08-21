@@ -193,8 +193,8 @@ void CCheckStyle::checkNames( )
             }
         }
 
-        //ds check for asserts (not considered real functions)
-        else if( "assert" == pcCurrent->str( ) )
+        //ds always check for asserts (not considered real functions)
+        if( "assert" == pcCurrent->str( ) )
         {
             //ds make sure we really caught an assert by checking the brackets
             if( "(" == pcCurrent->next( )->str( ) )
@@ -207,6 +207,13 @@ void CCheckStyle::checkNames( )
                 }
             }
 
+        }
+
+        //ds always check for boost pointer initializations (unfortunately cppcheck does not recognize boost::shared_ptr< char > test( new char[123] );)
+        if( "shared_ptr" == pcCurrent->str( ) || "scoped_ptr" == pcCurrent->str( ) )
+        {
+            //ds call the check procedure
+            checkBoostPointer( pcCurrent );
         }
     }
 }
@@ -282,20 +289,8 @@ void CCheckStyle::checkPrefix( const Token* p_pcToken, const Variable* p_pcVaria
         return;
     }
 
-    //ds type name buffer
-    std::string strTypeName( "" );
-
-    //ds get variable type, first check if its a standard type or class (always check the variable type even if its a pointer or array which ignore the type name in the prefix)
-    if( 0 != p_pcVariable->type( ) )
-    {
-        //ds we can directly get the type name
-        strTypeName = p_pcVariable->type( )->name( );
-    }
-    else
-    {
-        //ds we have to determine the type name manually
-        strTypeName = _getVariableType( p_pcVariable );
-    }
+    //ds determine the complete variable type (we do not use p_pcVariable->type( )->name( ) since this function does not work consistent at all)
+    const std::string strTypeName( _getVariableType( p_pcVariable ) );
 
     //ds get the correct type prefix from the type name (e.g. u, str) - we call the whitelist only with filtered variable types, e.g no int******
     std::string strCorrectTypePrefix( m_mapWhitelist[_filterVariableType( strTypeName )] );
@@ -309,59 +304,53 @@ void CCheckStyle::checkPrefix( const Token* p_pcToken, const Variable* p_pcVaria
             //ds trigger the class prefix
             strCorrectTypePrefix = m_mapWhitelist["class"];
         }
+
+        //ds check if its a pointer (if the token before the name is a * because the isPointer( ) flag is not set for unknown types) and if it is an unknown class
+        else if( "*"  == p_pcVariable->typeEndToken( )->str( )              &&
+                false == p_pcVariable->typeStartToken( )->isStandardType( ) )
+        {
+            //ds trigger the class prefix
+            strCorrectTypePrefix = m_mapWhitelist["class"];
+        }
         else
         {
-            //ds check if its a pointer (if the token before the name is a * because the isPointer( ) flag is not set for unknown types) and if it is an unknown class
-            if( p_pcToken->variable( ) == p_pcVariable                   &&
-                   "*"                 == p_pcToken->previous( )->str( ) &&
-                                 false == p_pcToken->isStandardType( )   )
-            {
-                //ds get the type name again because it might be invalid - cppcheck cuts *'s off and namespaces for unresolved classes
-                strTypeName = _getVariableType( p_pcVariable );
-
-                //ds inform user and escape
-                checkNamesError( p_pcToken, "misuse of pointer for class: " + strTypeName + " " + p_pcVariable->name( ) + " - please use: boost::shared_ptr< " + _filterVariableTypeSoft( strTypeName ) + " >", Severity::style );
-
-                //ds skip further processing
-                return;
-            }
-            else
-            {
-                //ds trigger error message (only informative error)
-                checkNamesError( p_pcToken, "no matching prefix found for type: " + strTypeName, Severity::information );
-
-                //ds no return here since the scope prefix still can be checked (e.g. m_ is not allowed for local variables no matter what type)
-            }
+            //ds trigger error message (only informative error)
+            checkNamesError( p_pcToken, "no matching prefix found for type: " + strTypeName, Severity::information );
         }
     }
 
     //ds check if the type is not forbidden
     if( "forbidden" != strCorrectTypePrefix )
     {
-        //ds check if its a pointer or array (e.g. p or arr) in this case we have to overwrite the type prefix (u becomes p/arr, i becomes p/arr )
-        if( true == p_pcVariable->isPointer( ) || true == _isBoostPointer( strTypeName ) )
+        //ds check if its a pointer (e.g. p) in this case we have to overwrite the type prefix (u becomes p, i becomes p )
+        if( true == p_pcVariable->isPointer( ) )
         {
             //ds overwrite the prefix (e.g. i becomes p)
             strCorrectTypePrefix = m_mapWhitelist["pointer"];
 
             //ds check if its a class, then boost_shared pointers are preferred if not already present
-            if( true == p_pcVariable->isClass( ) && false == _isBoostPointer( strTypeName ) )
+            if( true == p_pcVariable->isClass( ) )
             {
-                //ds inform user and escape
-                checkNamesError( p_pcToken, "misuse of pointer for class: " + strTypeName + " " + p_pcVariable->name( ) + " - please use: boost::shared_ptr< " + _filterVariableTypeSoft( strTypeName ) + " >", Severity::style );
-
-                return;
+                //ds inform user
+                checkNamesError( p_pcToken, "forbidden use of pointer for class: " + strTypeName + " " + p_pcVariable->name( ) + " - please use: boost::shared_ptr< " + _filterVariableTypeSoft( strTypeName ) + " >", Severity::style );
             }
 
             //ds case for types entered in the whitelist but not detected as classes
-            if( p_pcToken->variable( ) == p_pcVariable && false == p_pcToken->isStandardType( ) )
+            if( false == p_pcVariable->typeStartToken( )->isStandardType( ) )
             {
-                //ds inform user and escape
-                checkNamesError( p_pcToken, "misuse of pointer for class: " + strTypeName + " " + p_pcVariable->name( ) + " - please use: boost::shared_ptr< " + _filterVariableTypeSoft( strTypeName ) + " >", Severity::style );
-
-                return;
+                //ds inform user
+                checkNamesError( p_pcToken, "forbidden use of pointer for class: " + strTypeName + " " + p_pcVariable->name( ) + " - please use: boost::shared_ptr< " + _filterVariableTypeSoft( strTypeName ) + " >", Severity::style );
             }
         }
+
+        //ds check if its a boost pointer
+        else if( true == _isBoostPointer( strTypeName ) )
+        {
+            //ds overwrite the prefix (e.g. i becomes p)
+            strCorrectTypePrefix = m_mapWhitelist["pointer"];
+        }
+
+        //ds check if its a array or boost array
         else if( true == p_pcVariable->isArray( ) || true == _isBoostArray( strTypeName ) )
         {
             //ds overwrite the prefix (e.g. i becomes arr)
@@ -376,7 +365,7 @@ void CCheckStyle::checkPrefix( const Token* p_pcToken, const Variable* p_pcVaria
         //ds use of forbidden types
         checkNamesError( p_pcToken, "use of forbidden type: " + strTypeName + " in " + p_strVariableScopePrefix + ": " + strTypeName + " " + p_pcVariable->name( ), Severity::style );
 
-        //ds skip processing
+        //ds fatal - skip processing
         return;
     }
 
@@ -466,14 +455,118 @@ void CCheckStyle::checkAssert( const Token* p_pcToken )
     }
 }
 
+//ds TODO implement the parsing of boost::shared_ptr< char > pPointer1( new char[10] ); then the UGLY checkBoostPointer( ) can be removed
+void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
+{
+    //ds configurations are assumed:
+    //ds 1: boost::shared_ptr< char > pPointer1( new char[10] ); -> cppcheck can not parse this
+    //ds 2: boost::shared_ptr< char > pPointer1 = new char[10]; -> cppcheck parses to: boost::shared_ptr< char > pPointer1; pPointer1 = new char[10];
+
+    //ds get the pointer type (shared or scoped)
+    const std::string strPointerName( p_pcToken->str( ) );
+
+    //ds get the end of the type definition
+    const Token* pcEndToken = p_pcToken->findsimplematch( p_pcToken, ";" );
+
+    //ds escape if no end was found
+    if( 0 == pcEndToken )
+    {
+        return;
+    }
+
+    //ds pointer name
+    std::string strVariableName( "" );
+
+    //ds determine which configuration we have - first is the one cppcheck can not parse
+    if( ")" == pcEndToken->previous( )->str( ) )
+    {
+        //ds the end token does not have to be shifted - we can directly get the pointers name
+        strVariableName = pcEndToken->previous( )->link( )->previous( )->str( );
+
+    }
+    else
+    {
+        //ds the pointers name must be right before the first ;
+        strVariableName = pcEndToken->previous( )->str( );
+
+        //ds there is a second definition - shift the end token
+        pcEndToken = pcEndToken->next( );
+        pcEndToken = pcEndToken->findsimplematch( pcEndToken, ";" );
+    }
+
+    //ds type name (gets built up during array search - this is possible because the type must appear before the new call)
+    std::string strTypeName( "" );
+
+    //ds bracket counter in order to recursive information
+    unsigned int uOpenBrackets( 0 );
+
+    //ds check if new call was found
+    bool bIsNewCallFound( false );
+
+    //ds find the argument before the end token
+    for( const Token* itToken = p_pcToken->next( ); itToken != pcEndToken; itToken = itToken->next( ) )
+    {
+        //ds check if an opening bracket is found
+        if( "<" == itToken->str( ) )
+        {
+            ++uOpenBrackets;
+
+            //ds go on
+            continue;
+        }
+
+        //ds check if a closing bracket is found
+        if( ">" == itToken->str( ) )
+        {
+            --uOpenBrackets;
+
+            //ds go on
+            continue;
+        }
+
+        //ds look for a new call (this is no violation yet)
+        if( "new" == itToken->str( ) )
+        {
+            bIsNewCallFound = true;
+        }
+
+        //ds as long as there are open brackets record the information inbetween
+        if( 0 != uOpenBrackets )
+        {
+            strTypeName += itToken->str( );
+        }
+
+        //ds escape if we reach a function or parameter end
+        if( ")" == itToken->str( ) )
+        {
+            return;
+        }
+
+        //ds once the new call is found a following array opener [ is fatal
+        if( true == bIsNewCallFound && "[" == itToken->str( ) )
+        {
+            //ds trigger error message
+            checkNamesError( p_pcToken, "forbidden array initialization of class: boost::" + strPointerName + "< " + strTypeName + " > " + strVariableName + " - please use: boost::shared_array< " + strTypeName  + " >", Severity::style );
+        }
+    }
+}
+
 bool CCheckStyle::_isBoostPointer( const std::string strTypeName ) const
 {
-    //ds check booth valid cases
+    //ds check all valid cases
     if( std::string::npos != strTypeName.find( "boost::shared_ptr" ) )
     {
         return true;
     }
     else if( std::string::npos != strTypeName.find( "shared_ptr" ) )
+    {
+        return true;
+    }
+    else if( std::string::npos != strTypeName.find( "boost::scoped_ptr" ) )
+    {
+        return true;
+    }
+    else if( std::string::npos != strTypeName.find( "scoped_ptr" ) )
     {
         return true;
     }
@@ -486,12 +579,20 @@ bool CCheckStyle::_isBoostPointer( const std::string strTypeName ) const
 
 bool CCheckStyle::_isBoostArray( const std::string strTypeName ) const
 {
-    //ds check booth valid cases
+    //ds check all valid cases
     if( std::string::npos != strTypeName.find( "boost::shared_array" ) )
     {
         return true;
     }
     else if( std::string::npos != strTypeName.find( "shared_array" ) )
+    {
+        return true;
+    }
+    else if( std::string::npos != strTypeName.find( "boost::scoped_array" ) )
+    {
+        return true;
+    }
+    else if( std::string::npos != strTypeName.find( "scoped_array" ) )
     {
         return true;
     }
@@ -627,8 +728,9 @@ bool CCheckStyle::_isChecked( const Function* p_cFunction ) const
     for( std::vector< Function >::const_iterator itFunction = m_vecParsedFunctionList.begin( ); itFunction != m_vecParsedFunctionList.end( ); ++itFunction )
     {
         //ds check the name and type
-        if( itFunction->name( ) == p_cFunction->name( ) &&
-            itFunction->type    == p_cFunction->type    )
+        if( itFunction->name( )      == p_cFunction->name( )     &&
+            itFunction->type         == p_cFunction->type        &&
+            itFunction->initArgCount == itFunction->initArgCount )
         {
             //ds if we have a scope check it
             if( 0 != itFunction->functionScope && 0 != p_cFunction->functionScope )
@@ -667,7 +769,8 @@ bool CCheckStyle::_isChecked( const Variable* p_cVariable ) const
     for( std::vector< Variable >::const_iterator itVariable = m_vecParsedVariableList.begin( ); itVariable != m_vecParsedVariableList.end( ); ++itVariable )
     {
         //ds check the name
-        if( itVariable->name( ) == p_cVariable->name( ) )
+        if( itVariable->name( )  == p_cVariable->name( )  &&
+            itVariable->index( ) == p_cVariable->index( ) )
         {
             //ds if we have a type
             if( 0 != itVariable->type( ) && 0 != p_cVariable->type( ) )
