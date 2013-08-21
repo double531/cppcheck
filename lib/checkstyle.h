@@ -105,11 +105,16 @@ private:
     //ds check assertions
     void checkAssert( const Token* p_pcToken );
 
+    //ds identify boost::shared_ptrs and arrays
+    bool _isBoostPointer( const std::string strTypeName ) const;
+    bool _isBoostArray( const std::string strTypeName ) const;
+
     //ds retrieves the complete variable type consisting of multiple tokens (e.g std::string)
     const std::string _getVariableType( const Variable* p_pcVariable ) const;
 
     //ds returns a filtered version of the variable type (without *'s and &'s)
     const std::string _filterVariableType( const std::string p_strType ) const;
+    const std::string _filterVariableTypeSoft( const std::string p_strType ) const;
 
     //ds check vectors (overloaded for easy readability)
     bool _isChecked( const Function* p_cFunction ) const;

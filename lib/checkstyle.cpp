@@ -79,6 +79,7 @@ CCheckStyle::CCheckStyle( const Tokenizer* p_Tokenizer, const Settings* p_Settin
     m_mapWhitelist[ "pair" ]     = "pr";   //24
     m_mapWhitelist[ "set" ]      = "set";  //25
     m_mapWhitelist[ "tuple" ]    = "tpl";  //26
+    m_mapWhitelist[ "iterator" ] = "it";   //26.1
 
     //ds custom
     m_mapWhitelist[ "array" ]              = "arr"; //27
@@ -141,7 +142,7 @@ void CCheckStyle::checkNames( )
                     checkPrefix( pcCurrent, pcFunction );
                 }
 
-                //ds for each argument of the function
+                //ds check each argument of the function as variable
                 for( std::list< Variable >::const_iterator itVariable = pcFunction->argumentList.begin( ); itVariable != pcFunction->argumentList.end( ); ++itVariable )
                 {
                     //ds get the variable from the iterator (this avoids the overloading of checkPrefix( ) for a const_iterator Variable)
@@ -284,7 +285,7 @@ void CCheckStyle::checkPrefix( const Token* p_pcToken, const Variable* p_pcVaria
     //ds type name buffer
     std::string strTypeName( "" );
 
-    //ds get variable type, first check if its a standard type (always check the variable type even if its a pointer or array which ignore the type name in the prefix)
+    //ds get variable type, first check if its a standard type or class (always check the variable type even if its a pointer or array which ignore the type name in the prefix)
     if( 0 != p_pcVariable->type( ) )
     {
         //ds we can directly get the type name
@@ -299,10 +300,10 @@ void CCheckStyle::checkPrefix( const Token* p_pcToken, const Variable* p_pcVaria
     //ds get the correct type prefix from the type name (e.g. u, str) - we call the whitelist only with filtered variable types, e.g no int******
     std::string strCorrectTypePrefix( m_mapWhitelist[_filterVariableType( strTypeName )] );
 
-    //ds check no type prefix could not be found
+    //ds check no type prefix could not be found - this is the case for all user defined classes/structs not covered in the whitelist
     if( true == strCorrectTypePrefix.empty( ) )
     {
-        //ds check if we are handling a class without special prefixes (unlike std::string)
+        //ds check if we are handling a class without special prefixes (unlike std::string), unfortunately this does not work for class* and unresolved classes
         if( true == p_pcVariable->isClass( ) )
         {
             //ds trigger the class prefix
@@ -310,38 +311,73 @@ void CCheckStyle::checkPrefix( const Token* p_pcToken, const Variable* p_pcVaria
         }
         else
         {
-            //ds trigger error message (only informative error)
-            checkNamesError( p_pcToken, "no matching prefix found for type: " + strTypeName, Severity::information );
+            //ds check if its a pointer (if the token before the name is a * because the isPointer( ) flag is not set for unknown types) and if it is an unknown class
+            if( p_pcToken->variable( ) == p_pcVariable                   &&
+                   "*"                 == p_pcToken->previous( )->str( ) &&
+                                 false == p_pcToken->isStandardType( )   )
+            {
+                //ds get the type name again because it might be invalid - cppcheck cuts *'s off and namespaces for unresolved classes
+                strTypeName = _getVariableType( p_pcVariable );
 
-            //ds no return here since the scope prefix still can be checked (e.g. m_ is not allowed for local variables no matter what type)
+                //ds inform user and escape
+                checkNamesError( p_pcToken, "misuse of pointer for class: " + strTypeName + " " + p_pcVariable->name( ) + " - please use: boost::shared_ptr< " + _filterVariableTypeSoft( strTypeName ) + " >", Severity::style );
+
+                //ds skip further processing
+                return;
+            }
+            else
+            {
+                //ds trigger error message (only informative error)
+                checkNamesError( p_pcToken, "no matching prefix found for type: " + strTypeName, Severity::information );
+
+                //ds no return here since the scope prefix still can be checked (e.g. m_ is not allowed for local variables no matter what type)
+            }
         }
+    }
+
+    //ds check if the type is not forbidden
+    if( "forbidden" != strCorrectTypePrefix )
+    {
+        //ds check if its a pointer or array (e.g. p or arr) in this case we have to overwrite the type prefix (u becomes p/arr, i becomes p/arr )
+        if( true == p_pcVariable->isPointer( ) || true == _isBoostPointer( strTypeName ) )
+        {
+            //ds overwrite the prefix (e.g. i becomes p)
+            strCorrectTypePrefix = m_mapWhitelist["pointer"];
+
+            //ds check if its a class, then boost_shared pointers are preferred if not already present
+            if( true == p_pcVariable->isClass( ) && false == _isBoostPointer( strTypeName ) )
+            {
+                //ds inform user and escape
+                checkNamesError( p_pcToken, "misuse of pointer for class: " + strTypeName + " " + p_pcVariable->name( ) + " - please use: boost::shared_ptr< " + _filterVariableTypeSoft( strTypeName ) + " >", Severity::style );
+
+                return;
+            }
+
+            //ds case for types entered in the whitelist but not detected as classes
+            if( p_pcToken->variable( ) == p_pcVariable && false == p_pcToken->isStandardType( ) )
+            {
+                //ds inform user and escape
+                checkNamesError( p_pcToken, "misuse of pointer for class: " + strTypeName + " " + p_pcVariable->name( ) + " - please use: boost::shared_ptr< " + _filterVariableTypeSoft( strTypeName ) + " >", Severity::style );
+
+                return;
+            }
+        }
+        else if( true == p_pcVariable->isArray( ) || true == _isBoostArray( strTypeName ) )
+        {
+            //ds overwrite the prefix (e.g. i becomes arr)
+            strCorrectTypePrefix = m_mapWhitelist["array"];
+        }
+
+        //ds add the scope prefix (has no effect if the overhanded scope prefix can not be found)
+        strCorrectTypePrefix = m_mapWhitelist[p_strVariableScopePrefix] + strCorrectTypePrefix;
     }
     else
     {
-        //ds check if the type is not forbidden
-        if( "forbidden" != strCorrectTypePrefix )
-        {
-            //ds check if its a pointer or array (e.g. p or arr) in this case we have to overwrite the type prefix (u becomes p/arr, i becomes p/arr )
-            if( true == p_pcVariable->isPointer( ) )
-            {
-                strCorrectTypePrefix = m_mapWhitelist["pointer"];
-            }
-            else if( true == p_pcVariable->isArray( ) )
-            {
-                strCorrectTypePrefix = m_mapWhitelist["array"];
-            }
+        //ds use of forbidden types
+        checkNamesError( p_pcToken, "use of forbidden type: " + strTypeName + " in " + p_strVariableScopePrefix + ": " + strTypeName + " " + p_pcVariable->name( ), Severity::style );
 
-            //ds add the scope prefix
-            strCorrectTypePrefix = m_mapWhitelist[p_strVariableScopePrefix] + strCorrectTypePrefix;
-        }
-        else
-        {
-            //ds use of forbidden types
-            checkNamesError( p_pcToken, "use of forbidden type: " + strTypeName + " in " + p_strVariableScopePrefix + ": " + strTypeName + " " + p_pcVariable->name( ), Severity::style );
-
-            //ds skip processing
-            return;
-        }
+        //ds skip processing
+        return;
     }
 
     //ds check if there is a variable name (waited until now to display type information)
@@ -400,6 +436,17 @@ void CCheckStyle::checkAssert( const Token* p_pcToken )
         return;
     }
 
+    //ds information string which covers the complete assert statement
+    std::string strAssertStatement( "" );
+
+    //ds get the complete statement here because the next loop breaks when an error is found
+    for( const Token* itToken = p_pcToken->next( )->next( ); itToken != p_pcToken->next( )->link( ); itToken = itToken->next( ) )
+    {
+        //ds add all characters with a space
+        strAssertStatement += itToken->str( );
+        strAssertStatement += " ";
+    }
+
     //ds check all arguments between the two links of the assert call
     for( const Token* itToken = p_pcToken->next( )->next( ); itToken != p_pcToken->next( )->link( ); itToken = itToken->next( ) )
     {
@@ -407,15 +454,51 @@ void CCheckStyle::checkAssert( const Token* p_pcToken )
         if( "++" == itToken->str( ) || "--" == itToken->str( ) )
         {
             //ds trigger error message
-            checkNamesError( p_pcToken, "assert statement includes forbidden operation: " + itToken->str( ), Severity::style );
+            checkNamesError( p_pcToken, "assert statement: assert( " + strAssertStatement + ") includes forbidden operation: " + itToken->str( ), Severity::style );
         }
 
         //ds no function calls allowed
         if( Token::eFunction == itToken->type( ) )
         {
             //ds trigger error message
-            checkNamesError( p_pcToken, "assert statement includes forbidden function call: " + itToken->str( ) + "( )", Severity::style );
+            checkNamesError( p_pcToken, "assert statement: assert( " + strAssertStatement + ") includes forbidden function call: " + itToken->str( ) + "( )", Severity::style );
         }
+    }
+}
+
+bool CCheckStyle::_isBoostPointer( const std::string strTypeName ) const
+{
+    //ds check booth valid cases
+    if( std::string::npos != strTypeName.find( "boost::shared_ptr" ) )
+    {
+        return true;
+    }
+    else if( std::string::npos != strTypeName.find( "shared_ptr" ) )
+    {
+        return true;
+    }
+    else
+    {
+        //ds nothing found
+        return false;
+    }
+}
+
+bool CCheckStyle::_isBoostArray( const std::string strTypeName ) const
+{
+    //ds check booth valid cases
+    if( std::string::npos != strTypeName.find( "boost::shared_array" ) )
+    {
+        return true;
+    }
+    else if( std::string::npos != strTypeName.find( "shared_array" ) )
+    {
+        return true;
+    }
+    else
+    {
+        //ds nothing found
+        return false;
     }
 }
 
@@ -462,6 +545,54 @@ const std::string CCheckStyle::_getVariableType( const Variable* p_pcVariable ) 
 }
 
 const std::string CCheckStyle::_filterVariableType( const std::string p_strType ) const
+{
+    std::string strTypeFiltered( "" );
+
+    //ds check for a template inside of the type
+    const long unsigned int uStartTemplate( p_strType.find( '<' ) );
+
+    //ds get the container type if present
+    if( std::string::npos != uStartTemplate )
+    {
+        //ds first check if an iterator is present (since it overwrites all prefixes)
+        if( "iterator" == p_strType.substr( p_strType.length( ) - 8, 8 ) )
+        {
+            //ds always iterator
+            strTypeFiltered = "iterator";
+        }
+        else
+        {
+            //ds check for the namespace
+            if( "std::" == p_strType.substr( 0, 5 ) )
+            {
+                //ds only get the type of the container right after the namespace
+                strTypeFiltered = p_strType.substr( 5, uStartTemplate - 5 );
+            }
+            else
+            {
+                //ds no namespace to consider
+                strTypeFiltered = p_strType.substr( 0, uStartTemplate );
+            }
+        }
+    }
+    else
+    {
+        //ds loop through the whole string and remove *'s and &'s
+        for( std::string::const_iterator itString = p_strType.begin( ); itString != p_strType.end( ); ++itString )
+        {
+            //ds only add nonillegal characters
+            if( '*' != *itString && '&' != *itString )
+            {
+                //ds build the filtered string
+                strTypeFiltered += *itString;
+            }
+        }
+    }
+
+    return strTypeFiltered;
+}
+
+const std::string CCheckStyle::_filterVariableTypeSoft( const std::string p_strType ) const
 {
     std::string strTypeFiltered( "" );
 
