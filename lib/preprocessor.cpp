@@ -380,6 +380,10 @@ static bool isFallThroughComment(std::string comment)
 
 std::string Preprocessor::removeComments(const std::string &str, const std::string &filename)
 {
+    //ds all the comments which get removed here get added to a separate comment token list (vector for easier handling)
+    //ds since the code below is quite unreadable the comments get extracted at this point (PERFORMANCE COST)
+    _saveCommentsToVector( str );
+
     // For the error report
     unsigned int lineno = 1;
 
@@ -1028,6 +1032,80 @@ std::string Preprocessor::getdef(std::string line, bool def)
 
     // The remaining string is our result.
     return line;
+}
+
+//ds this functions parses comments and adds them to the comments vector
+void Preprocessor::_saveCommentsToVector( const std::string p_strSourceFile )
+{
+    //ds make sure the vector is empty
+    //m_vecComments.clear( );
+
+    //ds first iterate over the complete source file string (we do not use iterators here because we have to use the string find function and don't want to use 2 counters)
+    for( unsigned int uIndex = 0; uIndex < p_strSourceFile.length( ); ++uIndex )
+    {
+        //ds check if we got a comment starter
+        if( '/' == p_strSourceFile[uIndex] )
+        {
+            //ds go on
+            ++uIndex;
+
+            //ds check if we can access the next character
+            if( p_strSourceFile.length( ) != uIndex )
+            {
+                //ds check if we got a one line comment
+                if( '/' == p_strSourceFile[uIndex] )
+                {
+                    //ds find the end (UGLY datatype but needed)
+                    const long unsigned int uIndexEndOfCurrentComment = p_strSourceFile.find( '\n', uIndex );
+
+                    //ds if it worked
+                    if( std::string::npos != uIndexEndOfCurrentComment )
+                    {
+                        std::string strCompleteComment( "" );
+
+                        //ds build the complete comment (we do not want the end line '/n' in the comment)
+                        for( unsigned int uIndexComment = uIndex - 2; uIndexComment < uIndexEndOfCurrentComment; ++uIndexComment )
+                        {
+                            //ds add all characters
+                            strCompleteComment += p_strSourceFile[uIndexComment];
+                        }
+
+                        //ds add the comment
+                        m_vecComments.push_back( strCompleteComment );
+
+                        //ds we got the complete comment, update the index
+                        uIndex = static_cast< unsigned int >( uIndexEndOfCurrentComment ) + 1;
+                    }
+                }
+
+                //ds or if we got a multiline comment (this case may look completely analogous to the previous but there are several small index differences)
+                else if( '*' == p_strSourceFile[uIndex] )
+                {
+                    //ds find the end (UGLY datatype but needed)
+                    const long unsigned int uIndexEndOfCurrentComment = p_strSourceFile.find( "*/", uIndex );
+
+                    //ds if it worked
+                    if( std::string::npos != uIndexEndOfCurrentComment )
+                    {
+                        std::string strCompleteComment( "" );
+
+                        //ds build the complete comment (we want the */ in the comment)
+                        for( unsigned int uIndexComment = uIndex - 2; uIndexComment <= uIndexEndOfCurrentComment+1; ++uIndexComment )
+                        {
+                            //ds add all characters
+                            strCompleteComment += p_strSourceFile[uIndexComment];
+                        }
+
+                        //ds add the comment
+                        m_vecComments.push_back( strCompleteComment );
+
+                        //ds we got the complete comment, update the index
+                        uIndex = static_cast< unsigned int >( uIndexEndOfCurrentComment ) + 2;
+                    }
+                }
+            }
+        }
+    }
 }
 
 /** Simplify variable in variable map. */
@@ -1897,6 +1975,11 @@ Preprocessor::HeaderTypes Preprocessor::getHeaderFileName(std::string &str)
         return UserHeader;
     else
         return SystemHeader;
+}
+
+const std::vector< std::string >& Preprocessor::getComments( )
+{
+    return m_vecComments;
 }
 
 /**

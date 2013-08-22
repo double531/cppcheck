@@ -43,29 +43,30 @@ public:
     //ds constructor for registration
     CCheckStyle( );
 
-    //ds constructor for test runs
-    CCheckStyle( const Tokenizer* p_Tokenizer, const Settings* p_Settings, ErrorLogger* p_ErrorLogger );
+    //ds constructors for test runs
+    CCheckStyle( const Tokenizer* p_Tokenizer, const std::vector< std::string >& p_vecComments, const Settings* p_Settings, ErrorLogger* p_ErrorLogger );
 
 
 //ds accessors
 public:
 
-    //ds regular checks
-    void runChecks( const Tokenizer* p_Tokenizer, const Settings* p_Settings, ErrorLogger* p_ErrorLogger )
+    //ds custom checks (virtual)
+    void runCustomChecks( const Tokenizer* p_Tokenizer, const std::vector< std::string >& p_vecComments, const Settings* p_Settings, ErrorLogger* p_ErrorLogger )
     {
-        //ds create check instance
-        CCheckStyle cChecker( p_Tokenizer, p_Settings, p_ErrorLogger );
+        //ds create a class with the given parameters
+        CCheckStyle cChecker( p_Tokenizer, p_vecComments, p_Settings, p_ErrorLogger );
 
         //ds execute checks
         //cChecker.dumpTokens( );
         cChecker.checkNames( );
+        cChecker.checkComments( );
     }
 
-    //ds simple checks
+    //ds simple checks (is pure virtual)
     void runSimplifiedChecks( const Tokenizer* p_Tokenizer, const Settings* p_Settings, ErrorLogger* p_ErrorLogger )
     {
-        //ds create check instance
-        CCheckStyle cChecker( p_Tokenizer, p_Settings, p_ErrorLogger );
+        //ds nothing to do but suppress warnings ;)
+        CCheckStyle cChecker( p_Tokenizer, std::vector< std::string >( ), p_Settings, p_ErrorLogger );
     }
 
 //ds virtual inheritance
@@ -74,7 +75,7 @@ private:
     //ds framework method to display error messages
     void getErrorMessages( ErrorLogger* p_ErrorLogger, const Settings* p_Settings ) const
     {
-        CCheckStyle c( 0, p_Settings, p_ErrorLogger );
+        CCheckStyle c( 0, std::vector< std::string >( ), p_Settings, p_ErrorLogger );
 
         c.checkNamesError( 0, "", Severity::style );
     }
@@ -91,9 +92,12 @@ private:
     //ds displays all parsed tokens
     void dumpTokens( );
 
-    //ds check names (only one function for higher efficiency since we only have to loop once through all tokens)
+    //ds check names (only one function for variables and functions for higher efficiency since we only have to loop once through all tokens)
     void checkNames( );
     void checkNamesError( const Token* p_Token, const std::string p_strErrorInformation, const Severity::SeverityType p_cSeverity );
+
+    void checkComments( );
+    void checkCommentsError( const Token* p_Token, const std::string p_strErrorInformation, const Severity::SeverityType p_cSeverity );
 
 //ds helpers
 private:
@@ -132,6 +136,9 @@ private:
 
     //ds vector containing all variables
     std::vector< Variable > m_vecParsedVariableList;
+
+    //ds commments vector
+    std::vector< std::string > m_vecComments;
 };
 
 /// @}

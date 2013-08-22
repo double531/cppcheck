@@ -39,7 +39,8 @@ CCheckStyle::CCheckStyle( ):Check( "Style" )
 }
 
 //ds constructor for test runs
-CCheckStyle::CCheckStyle( const Tokenizer* p_Tokenizer, const Settings* p_Settings, ErrorLogger* p_ErrorLogger ):Check( "Style", p_Tokenizer, p_Settings, p_ErrorLogger )
+CCheckStyle::CCheckStyle( const Tokenizer* p_Tokenizer, const std::vector< std::string >& p_vecComments, const Settings* p_Settings, ErrorLogger* p_ErrorLogger )
+                  :Check( "Style", p_Tokenizer, p_Settings, p_ErrorLogger ), m_vecComments( p_vecComments )
 {
     //ds initialize whitelist
 
@@ -91,15 +92,19 @@ CCheckStyle::CCheckStyle( const Tokenizer* p_Tokenizer, const Settings* p_Settin
 
 void CCheckStyle::dumpTokens( )
 {
+    std::cout << "<CCheckStyle>[dumpTokens]( ) display non-simplified token list" << std::endl;
+
     //ds loop through all tokens of the current file
     for( const Token* pcCurrent = _tokenizer->tokens( ); pcCurrent != 0; pcCurrent = pcCurrent->next( ) )
     {
-        std::cout << "token name: " << pcCurrent->str( ) << " file id: " << pcCurrent->fileIndex( ) << " varId: " << pcCurrent->varId( ) << std::endl;
+        std::cout << pcCurrent->str( ) << std::endl;
     }
 }
 
 void CCheckStyle::checkNames( )
 {
+    std::cout << "<CCheckStyle>[checkNames]( ) checking non-simplified token list" << std::endl;
+
     //ds loop through all tokens of the current file
     for( const Token* pcCurrent = _tokenizer->tokens( ); pcCurrent != 0; pcCurrent = pcCurrent->next( ) )
     {
@@ -222,6 +227,22 @@ void CCheckStyle::checkNamesError( const Token* p_Token, const std::string p_str
 {
     //ds report the error
     reportError( p_Token, p_cSeverity, "checkNames", p_strErrorInformation );
+}
+
+void CCheckStyle::checkComments( )
+{
+    std::cout << "<CCheckStyle>[checkComments]( ) checking comment list" << std::endl;
+
+    for( unsigned int uIndex = 0; uIndex < m_vecComments.size( ); ++uIndex )
+    {
+        std::cout << m_vecComments[uIndex] << std::endl;
+    }
+}
+
+void CCheckStyle::checkCommentsError( const Token* p_Token, const std::string p_strErrorInformation, const Severity::SeverityType p_cSeverity )
+{
+    //ds report the error
+    reportError( p_Token, p_cSeverity, "checkComments", p_strErrorInformation );
 }
 
 void CCheckStyle::checkPrefix( const Token* p_pcToken, const Function* p_pcFunction, const std::string p_strFunctionScopePrefix )

@@ -22,6 +22,7 @@
 //---------------------------------------------------------------------------
 
 #include <map>
+#include <vector>  //ds comments storage
 #include <istream>
 #include <string>
 #include <list>
@@ -191,6 +192,10 @@ public:
      *         SystemHeader if file surrounded with \<\> was found
      */
     static Preprocessor::HeaderTypes getHeaderFileName(std::string &str);
+
+    //ds getter for the comments
+    const std::vector< std::string >& getComments( );
+
 private:
 
     /**
@@ -202,6 +207,10 @@ private:
     static std::string removeSpaceNearNL(const std::string &str);
 
     static std::string getdef(std::string line, bool def);
+
+    //ds detect comments and add them to the comments token list (vector)
+    void _saveCommentsToVector( const std::string p_strSourceFile );
+
 
 public:
 
@@ -266,6 +275,9 @@ private:
 
     /** filename for cpp/c file - useful when reporting errors */
     std::string file0;
+
+    //ds comments vector
+    std::vector< std::string > m_vecComments;
 };
 
 /// @}

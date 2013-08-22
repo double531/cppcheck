@@ -211,6 +211,9 @@ private:
 
     /** Simplify code? true by default */
     bool _simplify;
+
+    //ds comments vector
+    std::vector< std::string > m_vecComments;
 };
 
 /// @}

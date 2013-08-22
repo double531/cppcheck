@@ -85,6 +85,12 @@ public:
     /** run checks, the token list is simplified */
     virtual void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) = 0;
 
+    //ds run checks with additional vectors (can be implemented optionally by check classes)
+    virtual void runCustomChecks( const Tokenizer* , const std::vector< std::string >& , const Settings* , ErrorLogger* )
+    {
+        //ds to be implemented in the check class
+    }
+
     /** get error messages */
     virtual void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const = 0;
 
@@ -113,6 +119,9 @@ protected:
     const Tokenizer * const _tokenizer;
     const Settings * const _settings;
     ErrorLogger * const _errorLogger;
+
+    //ds comments vector
+    std::vector< std::string > m_vecComments;
 
     /** report an error */
     void reportError(const Token *tok, const Severity::SeverityType severity, const std::string &id, const std::string &msg, bool inconclusive = false) {

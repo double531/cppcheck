@@ -162,6 +162,12 @@ unsigned int CppCheck::processFile(const std::string& filename)
             preprocessor.preprocess(fin, filedata, configurations, filename, _settings._includePaths);
         }
 
+        //ds clear the comments vector
+        m_vecComments.clear( );
+
+        //ds preprocessing complete we can retrieve the comments
+        m_vecComments = preprocessor.getComments( );
+
         // Run rules on this code
         for (std::list<Settings::Rule>::const_iterator it = _settings.rules.begin(); it != _settings.rules.end(); ++it) {
             if (it->tokenlist == "define") {
@@ -300,6 +306,8 @@ void CppCheck::analyseFile(std::istream &fin, const std::string &filename)
     preprocessor.preprocess(fin, filedata, configurations, filename, _settings._includePaths);
     const std::string code = preprocessor.getcode(filedata, "", filename);
 
+    //ds
+
     if (_settings.checkConfiguration) {
         return;
     }
@@ -372,6 +380,9 @@ void CppCheck::checkFile(const std::string &code, const char FileName[])
 
             Timer timerRunChecks((*it)->name() + "::runChecks", _settings._showtime, &S_timerResults);
             (*it)->runChecks(&_tokenizer, &_settings, this);
+
+            //ds additionally run the custom checks if possible
+            (*it)->runCustomChecks( &_tokenizer, m_vecComments, &_settings, this );
         }
 
         if (_settings.isEnabled("unusedFunction") && _settings._jobs == 1)
