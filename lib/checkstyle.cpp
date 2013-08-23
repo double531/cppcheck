@@ -92,8 +92,6 @@ CCheckStyle::CCheckStyle( const Tokenizer* p_Tokenizer, const std::vector< std::
 
 void CCheckStyle::dumpTokens( )
 {
-    std::cout << "<CCheckStyle>[dumpTokens]( ) display non-simplified token list" << std::endl;
-
     //ds loop through all tokens of the current file
     for( const Token* pcCurrent = _tokenizer->tokens( ); pcCurrent != 0; pcCurrent = pcCurrent->next( ) )
     {
@@ -103,8 +101,6 @@ void CCheckStyle::dumpTokens( )
 
 void CCheckStyle::checkNames( )
 {
-    std::cout << "<CCheckStyle>[checkNames]( ) checking non-simplified token list" << std::endl;
-
     //ds loop through all tokens of the current file
     for( const Token* pcCurrent = _tokenizer->tokens( ); pcCurrent != 0; pcCurrent = pcCurrent->next( ) )
     {
@@ -231,11 +227,52 @@ void CCheckStyle::checkNamesError( const Token* p_Token, const std::string p_str
 
 void CCheckStyle::checkComments( )
 {
-    std::cout << "<CCheckStyle>[checkComments]( ) checking comment list" << std::endl;
+    //ds token number not implemented yet
+    const Token* pcToken( _tokenizer->tokens( ) );
 
     for( unsigned int uIndex = 0; uIndex < m_vecComments.size( ); ++uIndex )
     {
-        std::cout << m_vecComments[uIndex] << std::endl;
+        //ds check for too short commments (shortest allowed is //!)
+        if( 3 >= m_vecComments[uIndex].length( ) )
+        {
+            checkCommentsError( pcToken, "one-line comment: \"" + m_vecComments[uIndex] + "\" is too short", Severity::style );
+        }
+
+        //ds if the first two characters are // we got a one-line comment
+        else if( "//" == m_vecComments[uIndex].substr( 0, 2 ) )
+        {
+            //ds if there is a space after the opening its invalid (we use substr and not char[] operations because substr can throw)
+            if( " " == m_vecComments[uIndex].substr( 2, 1 ) )
+            {
+                checkCommentsError( pcToken, "one-line comment: \"" + m_vecComments[uIndex] + "\" has invalid format - correct: \"//xx ...\" or \"//! ...\"", Severity::style );
+            }
+
+            //ds //!
+            else if( "!" == m_vecComments[uIndex].substr( 2, 1 ) )
+            {
+                //ds there must be a space after the !
+                if( 4 <= m_vecComments[uIndex].length( ) && " " != m_vecComments[uIndex].substr( 3, 1 ) )
+                {
+                    checkCommentsError( pcToken, "one-line comment: \"" + m_vecComments[uIndex] + "\" has invalid format - correct: \"//! ...\"", Severity::style );
+                }
+            }
+
+            //ds //x or //xx or //xxx..
+            else
+            {
+                //ds there must be a space after the second initial
+                if( 5 <= m_vecComments[uIndex].length( ) && " " != m_vecComments[uIndex].substr( 4, 1 ) )
+                {
+                    checkCommentsError( pcToken, "one-line comment: \"" + m_vecComments[uIndex] + "\" has invalid format - correct: \"//xx ...\"", Severity::style );
+                }
+            }
+        }
+
+        //ds check the multi line comment
+        else if( "/*" == m_vecComments[uIndex].substr( 0, 2 ) )
+        {
+            //ds TODO implement complex checks for the whole comment body (careful because it contains /n which mess up the reportError from cppcheck)
+        }
     }
 }
 

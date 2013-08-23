@@ -1064,7 +1064,7 @@ void Preprocessor::_saveCommentsToVector( const std::string p_strSourceFile )
                         std::string strCompleteComment( "" );
 
                         //ds build the complete comment (we do not want the end line '/n' in the comment)
-                        for( unsigned int uIndexComment = uIndex - 2; uIndexComment < uIndexEndOfCurrentComment; ++uIndexComment )
+                        for( unsigned int uIndexComment = uIndex - 1; uIndexComment < uIndexEndOfCurrentComment; ++uIndexComment )
                         {
                             //ds add all characters
                             strCompleteComment += p_strSourceFile[uIndexComment];
@@ -1090,7 +1090,7 @@ void Preprocessor::_saveCommentsToVector( const std::string p_strSourceFile )
                         std::string strCompleteComment( "" );
 
                         //ds build the complete comment (we want the */ in the comment)
-                        for( unsigned int uIndexComment = uIndex - 2; uIndexComment <= uIndexEndOfCurrentComment+1; ++uIndexComment )
+                        for( unsigned int uIndexComment = uIndex - 1; uIndexComment <= uIndexEndOfCurrentComment+1; ++uIndexComment )
                         {
                             //ds add all characters
                             strCompleteComment += p_strSourceFile[uIndexComment];
