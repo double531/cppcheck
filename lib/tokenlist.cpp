@@ -29,6 +29,7 @@
 #include <sstream>
 #include <cctype>
 #include <stack>
+//#include <iostream> //ds live debugging
 
 
 TokenList::TokenList(const Settings* settings) :
@@ -193,6 +194,12 @@ bool TokenList::createTokens(std::istream &code, const std::string& file0)
 
     bool expandedMacro = false;
 
+    /*ds dump code
+    for( unsigned int u = code.get( ); code.good( ); u = code.get( ) )
+    {
+        std::cout << char( u );
+    }*/
+
     // Read one byte at a time from code and create tokens
     for (char ch = (char)code.get(); code.good(); ch = (char)code.get()) {
         if (ch == Preprocessor::macroChar) {
@@ -202,6 +209,88 @@ bool TokenList::createTokens(std::istream &code, const std::string& file0)
             expandedMacro = true;
         } else if (ch == '\n') {
             expandedMacro = false;
+        }
+
+        //ds check for a possible comment start
+        else if( '/' == ch && ( '/' == code.peek( ) || '*' == code.peek( ) ) )
+        {
+            //ds determine which type we have - first case one-line comments
+            if( '/' == code.peek( ) )
+            {
+                //ds comment buffer
+                std::string strComment( "" );
+
+                //ds read to the end of the line
+                std::getline( code, strComment );
+
+                //ds add the comment beginning
+                strComment = "/" + strComment;
+
+                //ds add the comment to the tokens list
+                addtoken( strComment.c_str( ), lineno, FileIndex );
+
+                //ds set macro if string wasn't empty
+                if( false == strComment.empty( ) )
+                {
+                    _back->setExpandedMacro( expandedMacro );
+                }
+
+                //ds increment line number
+                ++lineno;
+
+                //ds HACK - this is needed because the parses would get confused if there is a statement not ending with a semicolon (like a comment)
+                ch = ';';
+            }
+
+            //ds multi-line comment
+            else if( '*' == code.peek( ) )
+            {
+                //ds add the start
+                std::string strComment( "/" );
+
+                //ds temporary line number
+                unsigned int uCommentLines( 0 );
+
+                //ds one-line case we just have to seek the first *//* - start looping from the *
+                for( unsigned int u = code.get( ); code.good( ); u = code.get( ) )
+                {
+                    //ds break if the end of the comment was found
+                    if( '*' == char( u ) &&  '/' == char( code.peek( ) ) )
+                    {
+                        //ds we want to keep the end in the string
+                        strComment += "*/";
+
+                        //ds escape for loop
+                        break;
+                    }
+                    else
+                    {
+                        //ds add the content as long as we don't reach the *//*
+                        strComment += char( u );
+
+                        //ds if we reach an endline increment the line number
+                        if( '\n' == char( u ) )
+                        {
+                            ++uCommentLines;
+                        }
+                    }
+                }
+
+                //ds add the comment to the tokens list
+                addtoken( strComment.c_str( ), lineno, FileIndex );
+
+                //ds set macro if string wasn't empty
+                if( false == strComment.empty( ) )
+                {
+                    _back->setExpandedMacro( expandedMacro );
+                }
+
+                //ds update the line number
+                lineno += uCommentLines;
+
+                //ds HACK - this is needed because the parses would get confused if there is a statement not ending with a semicolon (like a comment)
+                ch = ';';
+            }
         }
 
         // char/string..

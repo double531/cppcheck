@@ -44,29 +44,27 @@ public:
     CCheckStyle( );
 
     //ds constructors for test runs
-    CCheckStyle( const Tokenizer* p_Tokenizer, const std::vector< std::string >& p_vecComments, const Settings* p_Settings, ErrorLogger* p_ErrorLogger );
+    CCheckStyle( const Tokenizer* p_Tokenizer, const Settings* p_Settings, ErrorLogger* p_ErrorLogger );
 
 
 //ds accessors
 public:
 
-    //ds custom checks (virtual)
-    void runCustomChecks( const Tokenizer* p_Tokenizer, const std::vector< std::string >& p_vecComments, const Settings* p_Settings, ErrorLogger* p_ErrorLogger )
+    void runChecks( const Tokenizer* p_Tokenizer, const Settings* p_Settings, ErrorLogger* p_ErrorLogger )
     {
         //ds create a class with the given parameters
-        CCheckStyle cChecker( p_Tokenizer, p_vecComments, p_Settings, p_ErrorLogger );
+        CCheckStyle cChecker( p_Tokenizer, p_Settings, p_ErrorLogger );
 
-        //ds execute checks
+        //ds run checks
         //cChecker.dumpTokens( );
-        cChecker.checkNames( );
-        cChecker.checkComments( );
+        cChecker.checkComplete( );
     }
 
     //ds simple checks (is pure virtual)
     void runSimplifiedChecks( const Tokenizer* p_Tokenizer, const Settings* p_Settings, ErrorLogger* p_ErrorLogger )
     {
         //ds nothing to do but suppress warnings ;)
-        CCheckStyle cChecker( p_Tokenizer, std::vector< std::string >( ), p_Settings, p_ErrorLogger );
+        CCheckStyle cChecker( p_Tokenizer, p_Settings, p_ErrorLogger );
     }
 
 //ds virtual inheritance
@@ -75,9 +73,9 @@ private:
     //ds framework method to display error messages
     void getErrorMessages( ErrorLogger* p_ErrorLogger, const Settings* p_Settings ) const
     {
-        CCheckStyle c( 0, std::vector< std::string >( ), p_Settings, p_ErrorLogger );
+        CCheckStyle c( 0, p_Settings, p_ErrorLogger );
 
-        c.checkNamesError( 0, "", Severity::style );
+        c.checkCompleteError( 0, "", Severity::style );
     }
 
     //ds provide a description about the checks
@@ -92,22 +90,20 @@ private:
     //ds displays all parsed tokens
     void dumpTokens( );
 
-    //ds check names (only one function for variables and functions for higher efficiency since we only have to loop once through all tokens)
-    void checkNames( );
-    void checkNamesError( const Token* p_Token, const std::string p_strErrorInformation, const Severity::SeverityType p_cSeverity );
-
-    void checkComments( );
-    void checkCommentsError( const Token* p_Token, const std::string p_strErrorInformation, const Severity::SeverityType p_cSeverity );
+    //ds check all tokens in one run (only one function for variables and functions for higher efficiency since we only have to loop once through all tokens)
+    void checkComplete( );
+    void checkCompleteError( const Token* p_Token, const std::string p_strErrorInformation, const Severity::SeverityType p_cSeverity );
 
 //ds helpers
 private:
 
     //ds prefix checking for variables and functions
-    void checkPrefix( const Token* p_pcToken, const Function* p_pcFunction, const std::string p_strFunctionScopePrefix = "function" );
-    void checkPrefix( const Token* p_pcToken, const Variable* p_pcVariable, const std::string p_strVariableScopePrefix = "variable" );
+    void checkPrefixFunction( const Token* p_pcToken, const Function* p_pcFunction, const std::string p_strFunctionScopePrefix = "function" );
+    void checkPrefixVariable( const Token* p_pcToken, const Variable* p_pcVariable, const std::string p_strVariableScopePrefix = "variable" );
 
-    //ds check assertions and boost pointer arguments
+    //ds check assertions, comments and boost pointer arguments
     void checkAssert( const Token* p_pcToken );
+    void checkComment( const Token* p_pcToken );
     void checkBoostPointer( const Token* p_pcToken );
 
     //ds identify boost::shared_ptrs and arrays
@@ -117,9 +113,11 @@ private:
     //ds retrieves the complete variable type consisting of multiple tokens (e.g std::string)
     const std::string _getVariableType( const Variable* p_pcVariable ) const;
 
+    //ds returns a completely filtered version of the variable type (without *'s and &'s and namespaces)
+    const std::string _filterVariableTypeComplete( const std::string p_strType ) const;
+
     //ds returns a filtered version of the variable type (without *'s and &'s)
-    const std::string _filterVariableType( const std::string p_strType ) const;
-    const std::string _filterVariableTypeSoft( const std::string p_strType ) const;
+    const std::string _filterVariableTypeKeepNamespace( const std::string p_strType ) const;
 
     //ds check vectors (overloaded for easy readability)
     bool _isChecked( const Function* p_cFunction ) const;
@@ -137,8 +135,6 @@ private:
     //ds vector containing all variables
     std::vector< Variable > m_vecParsedVariableList;
 
-    //ds commments vector
-    std::vector< std::string > m_vecComments;
 };
 
 /// @}

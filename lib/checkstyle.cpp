@@ -39,8 +39,7 @@ CCheckStyle::CCheckStyle( ):Check( "Style" )
 }
 
 //ds constructor for test runs
-CCheckStyle::CCheckStyle( const Tokenizer* p_Tokenizer, const std::vector< std::string >& p_vecComments, const Settings* p_Settings, ErrorLogger* p_ErrorLogger )
-                  :Check( "Style", p_Tokenizer, p_Settings, p_ErrorLogger ), m_vecComments( p_vecComments )
+CCheckStyle::CCheckStyle( const Tokenizer* p_Tokenizer, const Settings* p_Settings, ErrorLogger* p_ErrorLogger ):Check( "Style", p_Tokenizer, p_Settings, p_ErrorLogger )
 {
     //ds initialize whitelist
 
@@ -99,7 +98,7 @@ void CCheckStyle::dumpTokens( )
     }
 }
 
-void CCheckStyle::checkNames( )
+void CCheckStyle::checkComplete( )
 {
     //ds loop through all tokens of the current file
     for( const Token* pcCurrent = _tokenizer->tokens( ); pcCurrent != 0; pcCurrent = pcCurrent->next( ) )
@@ -125,14 +124,14 @@ void CCheckStyle::checkNames( )
                         //ds check if the function is public (getter/setter)
                         if( Public == pcFunction->access )
                         {
-                            checkPrefix( pcCurrent, pcFunction );
+                            checkPrefixFunction( pcCurrent, pcFunction );
                         }
 
                         //ds check if the function is a method
                         else if( Private   == pcFunction->access ||
                                  Protected == pcFunction->access )
                         {
-                            checkPrefix( pcCurrent, pcFunction, "method" );
+                            checkPrefixFunction( pcCurrent, pcFunction, "method" );
                         }
                     }
                 }
@@ -140,7 +139,7 @@ void CCheckStyle::checkNames( )
                 //ds local function
                 else
                 {
-                    checkPrefix( pcCurrent, pcFunction );
+                    checkPrefixFunction( pcCurrent, pcFunction );
                 }
 
                 //ds check each argument of the function as variable
@@ -150,7 +149,7 @@ void CCheckStyle::checkNames( )
                     Variable cVariable = *itVariable;
 
                     //ds check for a parameter variable
-                    checkPrefix( pcCurrent, &cVariable, "parameter" );
+                    checkPrefixVariable( pcCurrent, &cVariable, "parameter" );
                 }
             }
         }
@@ -174,7 +173,7 @@ void CCheckStyle::checkNames( )
                     if( pcCurrent->scope( )->isClassOrStruct( ) )
                     {
                         //ds check for an attribute name (m_ scope name)
-                        checkPrefix( pcCurrent, pcVariable, "attribute" );
+                        checkPrefixVariable( pcCurrent, pcVariable, "attribute" );
                     }
                     else
                     {
@@ -182,12 +181,12 @@ void CCheckStyle::checkNames( )
                         if( true == pcVariable->isGlobal( ) )
                         {
                             //ds check the variable name (global scope)
-                            checkPrefix( pcCurrent, pcVariable, "global variable" );
+                            checkPrefixVariable( pcCurrent, pcVariable, "global variable" );
                         }
                         else
                         {
                             //ds check the variable name (no scope name)
-                            checkPrefix( pcCurrent, pcVariable );
+                            checkPrefixVariable( pcCurrent, pcVariable );
                         }
                     }
                 }
@@ -195,7 +194,7 @@ void CCheckStyle::checkNames( )
         }
 
         //ds always check for asserts (not considered real functions)
-        if( "assert" == pcCurrent->str( ) )
+        else if( "assert" == pcCurrent->str( ) )
         {
             //ds make sure we really caught an assert by checking the brackets
             if( "(" == pcCurrent->next( )->str( ) )
@@ -207,82 +206,31 @@ void CCheckStyle::checkNames( )
                     checkAssert( pcCurrent );
                 }
             }
-
         }
 
-        //ds always check for boost pointer initializations (unfortunately cppcheck does not recognize boost::shared_ptr< char > test( new char[123] );)
+        /*ds always check for boost pointer initializations (unfortunately cppcheck does not recognize boost::shared_ptr< char > test( new char[123] );)
         if( "shared_ptr" == pcCurrent->str( ) || "scoped_ptr" == pcCurrent->str( ) )
         {
             //ds call the check procedure
             checkBoostPointer( pcCurrent );
+        }*/
+
+        //ds check if we got a comment
+        else if( Token::eComment == pcCurrent->type( ) )
+        {
+            //ds call comment checking procedure
+            checkComment( pcCurrent );
         }
     }
 }
 
-void CCheckStyle::checkNamesError( const Token* p_Token, const std::string p_strErrorInformation, const Severity::SeverityType p_cSeverity  )
+void CCheckStyle::checkCompleteError( const Token* p_Token, const std::string p_strErrorInformation, const Severity::SeverityType p_cSeverity  )
 {
     //ds report the error
     reportError( p_Token, p_cSeverity, "checkNames", p_strErrorInformation );
 }
 
-void CCheckStyle::checkComments( )
-{
-    //ds token number not implemented yet
-    const Token* pcToken( _tokenizer->tokens( ) );
-
-    for( unsigned int uIndex = 0; uIndex < m_vecComments.size( ); ++uIndex )
-    {
-        //ds check for too short commments (shortest allowed is //!)
-        if( 3 >= m_vecComments[uIndex].length( ) )
-        {
-            checkCommentsError( pcToken, "one-line comment: \"" + m_vecComments[uIndex] + "\" is too short", Severity::style );
-        }
-
-        //ds if the first two characters are // we got a one-line comment
-        else if( "//" == m_vecComments[uIndex].substr( 0, 2 ) )
-        {
-            //ds if there is a space after the opening its invalid (we use substr and not char[] operations because substr can throw)
-            if( " " == m_vecComments[uIndex].substr( 2, 1 ) )
-            {
-                checkCommentsError( pcToken, "one-line comment: \"" + m_vecComments[uIndex] + "\" has invalid format - correct: \"//xx ...\" or \"//! ...\"", Severity::style );
-            }
-
-            //ds //!
-            else if( "!" == m_vecComments[uIndex].substr( 2, 1 ) )
-            {
-                //ds there must be a space after the !
-                if( 4 <= m_vecComments[uIndex].length( ) && " " != m_vecComments[uIndex].substr( 3, 1 ) )
-                {
-                    checkCommentsError( pcToken, "one-line comment: \"" + m_vecComments[uIndex] + "\" has invalid format - correct: \"//! ...\"", Severity::style );
-                }
-            }
-
-            //ds //x or //xx or //xxx..
-            else
-            {
-                //ds there must be a space after the second initial
-                if( 5 <= m_vecComments[uIndex].length( ) && " " != m_vecComments[uIndex].substr( 4, 1 ) )
-                {
-                    checkCommentsError( pcToken, "one-line comment: \"" + m_vecComments[uIndex] + "\" has invalid format - correct: \"//xx ...\"", Severity::style );
-                }
-            }
-        }
-
-        //ds check the multi line comment
-        else if( "/*" == m_vecComments[uIndex].substr( 0, 2 ) )
-        {
-            //ds TODO implement complex checks for the whole comment body (careful because it contains /n which mess up the reportError from cppcheck)
-        }
-    }
-}
-
-void CCheckStyle::checkCommentsError( const Token* p_Token, const std::string p_strErrorInformation, const Severity::SeverityType p_cSeverity )
-{
-    //ds report the error
-    reportError( p_Token, p_cSeverity, "checkComments", p_strErrorInformation );
-}
-
-void CCheckStyle::checkPrefix( const Token* p_pcToken, const Function* p_pcFunction, const std::string p_strFunctionScopePrefix )
+void CCheckStyle::checkPrefixFunction( const Token* p_pcToken, const Function* p_pcFunction, const std::string p_strFunctionScopePrefix )
 {
     //ds check input
     if( 0 == p_pcToken  )
@@ -311,7 +259,7 @@ void CCheckStyle::checkPrefix( const Token* p_pcToken, const Function* p_pcFunct
         if( p_pcFunction->name( )[0] != '_' )
         {
             //ds trigger error message
-            checkNamesError( p_pcToken, "prefix of " + p_strFunctionScopePrefix + ": " + p_pcFunction->name( ) + "( ) is invalid - correct prefix: " + '_', Severity::style );
+            checkCompleteError( p_pcToken, "prefix of " + p_strFunctionScopePrefix + ": " + p_pcFunction->name( ) + "( ) is invalid - correct prefix: " + '_', Severity::style );
         }
     }
     else
@@ -320,12 +268,12 @@ void CCheckStyle::checkPrefix( const Token* p_pcToken, const Function* p_pcFunct
         if( p_pcFunction->name( )[0] == '_' )
         {
             //ds trigger error message
-            checkNamesError( p_pcToken, "prefix of " + p_strFunctionScopePrefix + ": " + p_pcFunction->name( ) + "( ) is invalid - prefix: " + '_' + " is only allowed for methods", Severity::style );
+            checkCompleteError( p_pcToken, "prefix of " + p_strFunctionScopePrefix + ": " + p_pcFunction->name( ) + "( ) is invalid - prefix: " + '_' + " is only allowed for methods", Severity::style );
         }
     }
 }
 
-void CCheckStyle::checkPrefix( const Token* p_pcToken, const Variable* p_pcVariable, const std::string p_strVariableScopePrefix )
+void CCheckStyle::checkPrefixVariable( const Token* p_pcToken, const Variable* p_pcVariable, const std::string p_strVariableScopePrefix )
 {
     //ds check input
     if( 0 == p_pcToken  )
@@ -351,7 +299,7 @@ void CCheckStyle::checkPrefix( const Token* p_pcToken, const Variable* p_pcVaria
     const std::string strTypeName( _getVariableType( p_pcVariable ) );
 
     //ds get the correct type prefix from the type name (e.g. u, str) - we call the whitelist only with filtered variable types, e.g no int******
-    std::string strCorrectTypePrefix( m_mapWhitelist[_filterVariableType( strTypeName )] );
+    std::string strCorrectTypePrefix( m_mapWhitelist[_filterVariableTypeComplete( strTypeName )] );
 
     //ds check no type prefix could not be found - this is the case for all user defined classes/structs not covered in the whitelist
     if( true == strCorrectTypePrefix.empty( ) )
@@ -373,7 +321,7 @@ void CCheckStyle::checkPrefix( const Token* p_pcToken, const Variable* p_pcVaria
         else
         {
             //ds trigger error message (only informative error)
-            checkNamesError( p_pcToken, "no matching prefix found for type: " + strTypeName, Severity::information );
+            checkCompleteError( p_pcToken, "no matching prefix found for type: " + strTypeName, Severity::information );
         }
     }
 
@@ -390,14 +338,14 @@ void CCheckStyle::checkPrefix( const Token* p_pcToken, const Variable* p_pcVaria
             if( true == p_pcVariable->isClass( ) )
             {
                 //ds inform user
-                checkNamesError( p_pcToken, "forbidden use of pointer for class: " + strTypeName + " " + p_pcVariable->name( ) + " - please use: boost::shared_ptr< " + _filterVariableTypeSoft( strTypeName ) + " >", Severity::style );
+                checkCompleteError( p_pcToken, "forbidden use of pointer for class: " + strTypeName + " " + p_pcVariable->name( ) + " - please use: boost::shared_ptr< " + _filterVariableTypeKeepNamespace( strTypeName ) + " >", Severity::style );
             }
 
             //ds case for types entered in the whitelist but not detected as classes
             if( false == p_pcVariable->typeStartToken( )->isStandardType( ) )
             {
                 //ds inform user
-                checkNamesError( p_pcToken, "forbidden use of pointer for class: " + strTypeName + " " + p_pcVariable->name( ) + " - please use: boost::shared_ptr< " + _filterVariableTypeSoft( strTypeName ) + " >", Severity::style );
+                checkCompleteError( p_pcToken, "forbidden use of pointer for class: " + strTypeName + " " + p_pcVariable->name( ) + " - please use: boost::shared_ptr< " + _filterVariableTypeKeepNamespace( strTypeName ) + " >", Severity::style );
             }
         }
 
@@ -421,7 +369,7 @@ void CCheckStyle::checkPrefix( const Token* p_pcToken, const Variable* p_pcVaria
     else
     {
         //ds use of forbidden types
-        checkNamesError( p_pcToken, "use of forbidden type: " + strTypeName + " in " + p_strVariableScopePrefix + ": " + strTypeName + " " + p_pcVariable->name( ), Severity::style );
+        checkCompleteError( p_pcToken, "use of forbidden type: " + strTypeName + " in " + p_strVariableScopePrefix + ": " + strTypeName + " " + p_pcVariable->name( ), Severity::style );
 
         //ds fatal - skip processing
         return;
@@ -431,7 +379,7 @@ void CCheckStyle::checkPrefix( const Token* p_pcToken, const Variable* p_pcVaria
     if( 0 == p_pcVariable->name( ).length( ) )
     {
         //ds trigger error message (only informative error)
-        checkNamesError( p_pcToken, "no variable name for type: " + strTypeName, Severity::style );
+        checkCompleteError( p_pcToken, "no variable name for type: " + strTypeName, Severity::style );
 
         //ds skip further processing
         return;
@@ -447,14 +395,14 @@ void CCheckStyle::checkPrefix( const Token* p_pcToken, const Variable* p_pcVaria
             if( strCorrectTypePrefix[u] != p_pcVariable->name( )[u] )
             {
                 //ds trigger error message
-                checkNamesError( p_pcToken, "prefix of " + p_strVariableScopePrefix + ": " +  strTypeName + " " + p_pcVariable->name( ) + " is invalid - correct prefix: " + strCorrectTypePrefix, Severity::style );
+                checkCompleteError( p_pcToken, "prefix of " + p_strVariableScopePrefix + ": " +  strTypeName + " " + p_pcVariable->name( ) + " is invalid - correct prefix: " + strCorrectTypePrefix, Severity::style );
             }
         }
     }
     else
     {
         //ds trigger error message
-        checkNamesError( p_pcToken, "name of " + p_strVariableScopePrefix + ": " +  strTypeName + " " + p_pcVariable->name( ) + " is too short - correct prefix: " + strCorrectTypePrefix, Severity::style );
+        checkCompleteError( p_pcToken, "name of " + p_strVariableScopePrefix + ": " +  strTypeName + " " + p_pcVariable->name( ) + " is too short - correct prefix: " + strCorrectTypePrefix, Severity::style );
 
         //ds skip processing
         return;
@@ -501,14 +449,65 @@ void CCheckStyle::checkAssert( const Token* p_pcToken )
         if( "++" == itToken->str( ) || "--" == itToken->str( ) )
         {
             //ds trigger error message
-            checkNamesError( p_pcToken, "assert statement: assert( " + strAssertStatement + ") includes forbidden operation: " + itToken->str( ), Severity::style );
+            checkCompleteError( p_pcToken, "assert statement: assert( " + strAssertStatement + ") includes forbidden operation: " + itToken->str( ), Severity::style );
         }
 
         //ds no function calls allowed
         if( Token::eFunction == itToken->type( ) )
         {
             //ds trigger error message
-            checkNamesError( p_pcToken, "assert statement: assert( " + strAssertStatement + ") includes forbidden function call: " + itToken->str( ) + "( )", Severity::style );
+            checkCompleteError( p_pcToken, "assert statement: assert( " + strAssertStatement + ") includes forbidden function call: " + itToken->str( ) + "( )", Severity::style );
+        }
+    }
+}
+
+void CCheckStyle::checkComment( const Token* p_pcToken )
+{
+    //ds only handle comments
+    if( Token::eComment == p_pcToken->type( ) )
+    {
+        //ds get comment
+        const std::string strComment( p_pcToken->str( ) );
+
+        //ds check if single line or not
+        if( true == p_pcToken->isSingleLine( ) )
+        {
+            //ds check for too short comments (shortest allowed is //!)
+            if( 3 >= strComment.length( ) )
+            {
+                checkCompleteError( p_pcToken, "one-line comment: \"" + strComment + "\" is too short", Severity::style );
+            }
+
+            //ds if there is a space after the opening its invalid (we use substr and not char[] operations because substr can throw)
+            if( " " == strComment.substr( 2, 1 ) )
+            {
+                checkCompleteError( p_pcToken, "one-line comment: \"" + strComment + "\" has invalid format - correct: \"//xx ...\" or \"//! ...\"", Severity::style );
+            }
+
+            //ds //!
+            else if( "!" == strComment.substr( 2, 1 ) )
+            {
+                //ds there must be a space after the !
+                if( 4 <= strComment.length( ) && " " != strComment.substr( 3, 1 ) )
+                {
+                    checkCompleteError( p_pcToken, "one-line comment: \"" + strComment + "\" has invalid format - correct: \"//! ...\"", Severity::style );
+                }
+            }
+
+            //ds //x or //xx or //xxx..
+            else
+            {
+                //ds there must be a space after the second initial
+                if( 5 <= strComment.length( ) && " " != strComment.substr( 4, 1 ) )
+                {
+                    checkCompleteError( p_pcToken, "one-line comment: \"" + strComment + "\" has invalid format - correct: \"//xx ...\"", Severity::style );
+                }
+            }
+        }
+        else
+        {
+            //ds multi line comment
+            checkCompleteError( p_pcToken, "multi-line comment: \"" + strComment + "\" has any format - correct: \"//** ...\"", Severity::style );
         }
     }
 }
@@ -604,7 +603,7 @@ void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
         if( true == bIsNewCallFound && "[" == itToken->str( ) )
         {
             //ds trigger error message
-            checkNamesError( p_pcToken, "forbidden array initialization of class: boost::" + strPointerName + "< " + strTypeName + " > " + strVariableName + " - please use: boost::shared_array< " + strTypeName  + " >", Severity::style );
+            checkCompleteError( p_pcToken, "forbidden array initialization of class: boost::" + strPointerName + "< " + strTypeName + " > " + strVariableName + " - please use: boost::shared_array< " + strTypeName  + " >", Severity::style );
         }
     }
 }
@@ -703,7 +702,7 @@ const std::string CCheckStyle::_getVariableType( const Variable* p_pcVariable ) 
     return strType;
 }
 
-const std::string CCheckStyle::_filterVariableType( const std::string p_strType ) const
+const std::string CCheckStyle::_filterVariableTypeComplete( const std::string p_strType ) const
 {
     std::string strTypeFiltered( "" );
 
@@ -751,7 +750,7 @@ const std::string CCheckStyle::_filterVariableType( const std::string p_strType 
     return strTypeFiltered;
 }
 
-const std::string CCheckStyle::_filterVariableTypeSoft( const std::string p_strType ) const
+const std::string CCheckStyle::_filterVariableTypeKeepNamespace( const std::string p_strType ) const
 {
     std::string strTypeFiltered( "" );
 

@@ -109,6 +109,13 @@ void Token::update_property_info()
             _type = eIncDecOp;
         else if (_str.size() == 1 && (_str.find_first_of("{}") != std::string::npos || (_link && _str.find_first_of("<>") != std::string::npos)))
             _type = eBracket;
+
+        //ds added comments detection
+        else if( 1 < _str.length( ) && ( "//" == _str.substr( 0, 2 ) || "/*" == _str.substr( 0, 2 ) ) )
+        {
+            _type = eComment;
+        }
+
         else
             _type = eOther;
     } else {
