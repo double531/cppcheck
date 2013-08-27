@@ -89,8 +89,14 @@ public:
      */
     void preprocess(std::istream &srcCodeStream, std::string &processedFile, std::list<std::string> &resultConfigurations, const std::string &filename, const std::list<std::string> &includePaths);
 
+    //ds overloaded for raw code transmission if desired
+    void preprocess(std::istream &srcCodeStream, std::string &processedFile, std::string& p_strRawCode, std::list<std::string> &resultConfigurations, const std::string &filename, const std::list<std::string> &includePaths);
+
     /** Just read the code into a string. Perform simple cleanup of the code */
     std::string read(std::istream &istr, const std::string &filename);
+
+    //ds overloaded for raw code transmission if desired
+    std::string read(std::istream &istr, const std::string &filename, std::string& p_strRawCode);
 
     /**
      * Get preprocessed code for a given configuration
@@ -191,7 +197,6 @@ public:
      *         SystemHeader if file surrounded with \<\> was found
      */
     static Preprocessor::HeaderTypes getHeaderFileName(std::string &str);
-
 private:
 
     /**
@@ -234,10 +239,11 @@ public:
      * @param filePath filename of code
      * @param includePaths Paths where headers might be
      * @param defs defines (only values)
+     * @param pragmaOnce includes that has already been included and contains a #pragma once statement
      * @param includes provide a empty list. this is just used to prevent recursive inclusions.
      * \return resulting string
      */
-    std::string handleIncludes(const std::string &code, const std::string &filePath, const std::list<std::string> &includePaths, std::map<std::string,std::string> &defs, std::list<std::string> includes = std::list<std::string>());
+    std::string handleIncludes(const std::string &code, const std::string &filePath, const std::list<std::string> &includePaths, std::map<std::string,std::string> &defs, std::list<std::string> &pragmaOnce, std::list<std::string> includes);
 
     void setFile0(const std::string &f) {
         file0 = f;

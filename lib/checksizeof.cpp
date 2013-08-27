@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2013 Daniel Marjamäki and Cppcheck team.
+ * Copyright (C) 2007-2013 Daniel MarjamÃ¤ki and Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -298,7 +298,7 @@ void CheckSizeof::sizeofVoid()
             int index = (tok->isName()) ? 0 : 1;
             const Variable* var = tok->tokAt(index)->variable();
             if (var && Token::Match(var->typeStartToken(), "void *")) {
-                std::string varname = tok->str();
+                std::string varname = tok->strAt(index);
                 // In case this 'void *' var is a member then go back to the main object
                 const Token* tok2 = tok->tokAt(index);
                 if (index == 0) {

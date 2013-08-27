@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2013 Daniel Marjam‰ki and Cppcheck team.
+ * Copyright (C) 2007-2013 Daniel Marjam√§ki and Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -551,8 +551,10 @@ private:
 
         check("void f(void *data) {\n"
               "  unsigned char* c = (unsigned char *)data++;\n"
+              "  unsigned char* c2 = (unsigned char *)++data;\n"
               "}");
-        ASSERT_EQUALS("[test.cpp:2]: (portability) 'data' is of type 'void *'. When using void pointers in calculations, the behaviour is undefined.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:2]: (portability) 'data' is of type 'void *'. When using void pointers in calculations, the behaviour is undefined.\n"
+                      "[test.cpp:3]: (portability) 'data' is of type 'void *'. When using void pointers in calculations, the behaviour is undefined.\n", errout.str());
 
         check("void f(void *data) {\n"
               "  void* data2 = (void *)data + 1;\n"

@@ -110,8 +110,8 @@ void Token::update_property_info()
         else if (_str.size() == 1 && (_str.find_first_of("{}") != std::string::npos || (_link && _str.find_first_of("<>") != std::string::npos)))
             _type = eBracket;
 
-        //ds added comments detection
-        else if( 1 < _str.length( ) && ( "//" == _str.substr( 0, 2 ) || "/*" == _str.substr( 0, 2 ) ) )
+        //ds added comment detection (minimum size 2)
+        else if( 2 == _str.size( ) && ( "//" == _str.substr( 0, 2 ) || "/*" == _str.substr( 0, 2 ) ) )
         {
             _type = eComment;
         }
@@ -132,7 +132,7 @@ void Token::update_property_isStandardType()
     if (_str.size() < 3)
         return;
 
-    static const char * const stdtype[] = {"int", "char", "bool", "long", "short", "float", "double", "wchar_t", "size_t", 0};
+    static const char * const stdtype[] = {"int", "char", "bool", "long", "short", "float", "double", "wchar_t", "size_t", "void", 0};
     for (int i = 0; stdtype[i]; i++) {
         if (_str == stdtype[i]) {
             _isStandardType = true;
@@ -976,14 +976,14 @@ void Token::createMutualLinks(Token *begin, Token *end)
 
 void Token::printOut(const char *title) const
 {
-    if (title)
+    if (title && title[0])
         std::cout << "\n### " << title << " ###\n";
     std::cout << stringifyList(true, true, true, true, true, 0, 0) << std::endl;
 }
 
 void Token::printOut(const char *title, const std::vector<std::string> &fileNames) const
 {
-    if (title)
+    if (title && title[0])
         std::cout << "\n### " << title << " ###\n";
     std::cout << stringifyList(true, true, true, true, true, &fileNames, 0) << std::endl;
 }

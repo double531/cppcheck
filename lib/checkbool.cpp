@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2013 Daniel Marjam‰ki and Cppcheck team.
+ * Copyright (C) 2007-2013 Daniel Marjam√§ki and Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -127,7 +127,7 @@ void CheckBool::checkComparisonOfBoolWithInt()
     for (std::size_t i = 0; i < functions; ++i) {
         const Scope * scope = symbolDatabase->functionScopes[i];
         for (const Token* tok = scope->classStart->next(); tok != scope->classEnd; tok = tok->next()) {
-            if (tok->next() && tok->next()->type() == Token::eComparisonOp && (!tok->previous() || !tok->previous()->isArithmeticalOp()) && (!tok->tokAt(3) || !tok->tokAt(3)->isArithmeticalOp())) {
+            if ((!Token::Match(tok->previous(), "%cop%")) && Token::Match(tok->next(), "%comp%") && (!Token::Match(tok->tokAt(3), "%cop%"))) {
                 const Token* const right = tok->tokAt(2);
                 if ((tok->varId() && right->isNumber()) || (tok->isNumber() && right->varId())) { // Comparing variable with number
                     const Token* varTok = tok;

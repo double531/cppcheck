@@ -176,8 +176,10 @@ private:
         TEST_CASE(simplifyKnownVariables51);    // #4409 hang
         TEST_CASE(simplifyKnownVariables52);    // #4728 "= x %cop%"
         TEST_CASE(simplifyKnownVariables53);    // references
+        TEST_CASE(simplifyKnownVariables54);    // #4913 'x' is not 0 after *--x=0;
         TEST_CASE(simplifyKnownVariablesIfEq1); // if (a==5) => a is 5 in the block
         TEST_CASE(simplifyKnownVariablesIfEq2); // if (a==5) { buf[a++] = 0; }
+        TEST_CASE(simplifyKnownVariablesIfEq3); // #4708 - if (a==5) { buf[--a] = 0; }
         TEST_CASE(simplifyKnownVariablesBailOutAssign1);
         TEST_CASE(simplifyKnownVariablesBailOutAssign2);
         TEST_CASE(simplifyKnownVariablesBailOutAssign3); // #4395 - nested assignments
@@ -921,6 +923,7 @@ private:
     }
 
     void simplifyFileAndLineMacro() { // tokenize 'return - __LINE__' correctly
+        ASSERT_EQUALS("\"test.cpp\"", tokenizeAndStringify("__FILE__"));
         ASSERT_EQUALS("return -1 ;", tokenizeAndStringify("return - __LINE__;"));
     }
 
@@ -2730,6 +2733,10 @@ private:
         ASSERT_EQUALS("void f ( ) { int * p ; p = abc ( ) ; }", tokenizeAndStringify("void f() { int *p; int *&ref=p; ref=abc(); }", true));
     }
 
+    void simplifyKnownVariables54() { // #4913
+        ASSERT_EQUALS("void f ( int * p ) { * -- p = 0 ; * p = 0 ; }", tokenizeAndStringify("void f(int*p) { *--p=0; *p=0; }", true));
+    }
+
     void simplifyKnownVariablesIfEq1() {
         const char code[] = "void f(int x) {\n"
                             "    if (x==5) {\n"
@@ -2748,11 +2755,33 @@ private:
         const char code[] = "void f(int x) {\n"
                             "    if (x==5) {\n"
                             "        buf[x++] = 0;\n"
+                            "        buf[x--] = 0;\n"
+                            "    }\n"
+                            "}";
+        // Increment and decrements should be computed
+        const char expected[] = "void f ( int x ) {\n"
+                                "if ( x == 5 ) {\n"
+                                "buf [ 5 ] = 0 ;\n"
+                                "buf [ 6 ] = 0 ;\n"
+                                "}\n"
+                                "}";
+        ASSERT_EQUALS(expected, tokenizeAndStringify(code, true, true, Settings::Unspecified, "test.c"));
+    }
+
+    void simplifyKnownVariablesIfEq3() {
+        const char code[] = "void f(int x) {\n"
+                            "    if (x==5) {\n"
+                            "        buf[++x] = 0;\n"
+                            "        buf[++x] = 0;\n"
+                            "        buf[--x] = 0;\n"
                             "    }\n"
                             "}";
         const char expected[] = "void f ( int x ) {\n"
-                                "if ( x == 5 ) {\n"
-                                "buf [ x ++ ] = 0 ;\n"
+                                "if ( x == 5 ) { "
+                                "x = 6 ;\n"
+                                "buf [ 6 ] = 0 ;\n"
+                                "buf [ 7 ] = 0 ;\n"
+                                "buf [ 6 ] = 0 ;\n"
                                 "}\n"
                                 "}";
         ASSERT_EQUALS(expected, tokenizeAndStringify(code, true, true, Settings::Unspecified, "test.c"));
@@ -5557,6 +5586,13 @@ private:
             const char code[] = "static unsigned int *a=0, *b=0;";
             ASSERT_EQUALS("static unsigned int * a = 0 ; static unsigned int * b = 0 ;", tokenizeAndStringify(code));
         }
+
+        {
+            const char code[] = "static int large_eeprom_type = (13 | (5)), "
+                                "default_flash_type = 42;";
+            ASSERT_EQUALS("static int large_eeprom_type = 13 ; static int default_flash_type = 42 ;",
+                          tokenizeAndStringify(code));
+        }
     }
 
     void vardecl6() {
@@ -7841,8 +7877,8 @@ private:
                                 "wchar_t * pwchar ; "
                                 "unsigned short * pushort ; "
                                 "unsigned short langid ; "
-                                "unsigned long dword64 ; "
-                                "unsigned long ulong64 ; "
+                                "unsigned long long dword64 ; "
+                                "unsigned long long ulong64 ; "
                                 "wchar_t * lpcwstr ; "
                                 "const wchar_t * lpcwstr ;";
 

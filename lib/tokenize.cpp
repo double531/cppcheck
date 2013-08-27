@@ -37,6 +37,7 @@
 
 Tokenizer::Tokenizer() :
     list(0),
+    m_lstCustomTokenList( 0 ),
     _settings(0),
     _errorLogger(0),
     _symbolDatabase(0),
@@ -48,6 +49,7 @@ Tokenizer::Tokenizer() :
 
 Tokenizer::Tokenizer(const Settings *settings, ErrorLogger *errorLogger) :
     list(settings),
+    m_lstCustomTokenList( settings ),
     _settings(settings),
     _errorLogger(errorLogger),
     _symbolDatabase(0),
@@ -1559,9 +1561,11 @@ void Tokenizer::simplifyMulAndParens()
     }
 }
 
+//ds modified tokenize function to add custom tokens from raw code
 bool Tokenizer::tokenize(std::istream &code,
                          const char FileName[],
-                         const std::string &configuration)
+                         const std::string &configuration,
+                         const std::string& p_strRawCode)
 {
     // make sure settings specified
     assert(_settings);
@@ -1571,7 +1575,8 @@ bool Tokenizer::tokenize(std::istream &code,
 
     _configuration = configuration;
 
-    if (!list.createTokens(code, Path::getRelativePath(Path::simplifyPath(FileName), _settings->_basePaths))) {
+    //ds create all tokens for all files
+    if (!list.createTokens(code, Path::getRelativePath(Path::simplifyPath(FileName), _settings->_basePaths), p_strRawCode)) {
         cppcheckError(0);
         return false;
     }
@@ -2077,6 +2082,41 @@ bool Tokenizer::tokenize(std::istream &code,
         }
     }
 
+    //ds get the custom token list beginning
+    const Token* pcCustomToken( list.getCustomFront( ) );
+
+    //ds create the additional token list with the custom tokens (the assign operator is not implemented)
+    for( const Token* pcRegularToken = list.front( ); pcRegularToken != 0; pcRegularToken = pcRegularToken->next( ) )
+    {
+        //ds add the current token to the custom list
+        m_lstCustomTokenList.addtoken( pcRegularToken, pcRegularToken->linenr( ), pcRegularToken->fileIndex( ) );
+
+        //ds check if we still have to add extra tokens and for a matching file id
+        if( 0 != pcCustomToken && pcCustomToken->fileIndex( ) == pcRegularToken->fileIndex( ) )
+        {
+            //ds check if we have to add a custom token in between
+            if( 0 != pcRegularToken->next( ) && pcCustomToken->linenr( ) < pcRegularToken->next( )->linenr( ) )
+            {
+                //ds add the custom token
+                m_lstCustomTokenList.addtoken( pcCustomToken, pcCustomToken->linenr( ), pcCustomToken->fileIndex( ) );
+
+                //ds move up in the custom token list
+                pcCustomToken = pcCustomToken->next( );
+            }
+        }
+    }
+
+    //ds if there are comments left which are not added yet
+    if( 0 != pcCustomToken )
+    {
+        //ds loop over the remaining tokens and add them
+        for( const Token* pcRemainingCustomToken = pcCustomToken; pcRemainingCustomToken != 0; pcRemainingCustomToken = pcRemainingCustomToken->next( ) )
+        {
+            //ds add the custom token
+            m_lstCustomTokenList.addtoken( pcRemainingCustomToken, pcRemainingCustomToken->linenr( ), pcRemainingCustomToken->fileIndex( ) );
+        }
+    }
+
     return true;
 }
 //---------------------------------------------------------------------------
@@ -2289,7 +2329,7 @@ void Tokenizer::simplifyFileAndLineMacro()
 {
     for (Token *tok = list.front(); tok; tok = tok->next()) {
         if (tok->str() == "__FILE__")
-            tok->str(list.file(tok));
+            tok->str("\"" + list.file(tok) + "\"");
         else if (tok->str() == "__LINE__")
             tok->str(MathLib::longToString(tok->linenr()));
     }
@@ -5244,7 +5284,11 @@ void Tokenizer::simplifyVarDecl(Token * tokBegin, Token * tokEnd, bool only_k_r_
                         if (isstatic) {
                             if (Token::Match(tok2->next(), "%num% ,"))
                                 tok2 = tok2->tokAt(2);
-                            else
+                            else if (Token::Match(tok2->next(), "( %num% ) ,")) { // ticket #4450
+                                tok2->deleteNext();
+                                tok2->next()->deleteNext();
+                                tok2 = tok2->tokAt(2);
+                            } else
                                 tok2 = NULL;
                         } else if (isconst && !ispointer) {
                             //do not split const non-pointer variables..
@@ -5354,25 +5398,25 @@ void Tokenizer::simplifyPlatformTypes()
         }
 
         if (Token::Match(tok, "size_t|uintptr_t")) {
-            tok->str("unsigned");
+            tok->isUnsigned(true);
 
             switch (type) {
             case isLongLong:
-                tok->insertToken("long");
-                tok->insertToken("long");
+                tok->isLong(true);
+                tok->str("long");
                 break;
             case isLong :
-                tok->insertToken("long");
+                tok->str("long");
                 break;
             case isInt:
-                tok->insertToken("int");
+                tok->str("int");
                 break;
             }
         } else if (Token::Match(tok, "ssize_t|ptrdiff_t|intptr_t")) {
             switch (type) {
             case isLongLong:
+                tok->isLong(true);
                 tok->str("long");
-                tok->insertToken("long");
                 break;
             case isLong :
                 tok->str("long");
@@ -5391,18 +5435,18 @@ void Tokenizer::simplifyPlatformTypes()
             if (Token::Match(tok, "BOOL|INT|INT32|HFILE|LONG32"))
                 tok->str("int");
             else if (Token::Match(tok, "BOOLEAN|BYTE|UCHAR")) {
-                tok->str("unsigned");
-                tok->insertToken("char");
+                tok->str("char");
+                tok->isUnsigned(true);
             } else if (tok->str() == "CHAR")
                 tok->str("char");
             else if (Token::Match(tok, "DWORD|ULONG|COLORREF|LCID|LCTYPE|LGRPID")) {
-                tok->str("unsigned");
-                tok->insertToken("long");
+                tok->str("long");
+                tok->isUnsigned(true);
             } else if (Token::Match(tok, "DWORD_PTR|ULONG_PTR|SIZE_T")) {
-                tok->str("unsigned");
-                tok->insertToken("long");
+                tok->str("long");
+                tok->isUnsigned(true);
                 if (_settings->platformType == Settings::Win64)
-                    tok->insertToken("long");
+                    tok->isLong(true);
             } else if (tok->str() == "FLOAT")
                 tok->str("float");
             else if (Token::Match(tok, "HRESULT|LONG"))
@@ -5413,14 +5457,14 @@ void Tokenizer::simplifyPlatformTypes()
             } else if (Token::Match(tok, "LONG_PTR|LPARAM|LRESULT|SSIZE_T")) {
                 tok->str("long");
                 if (_settings->platformType == Settings::Win64)
-                    tok->insertToken("long");
+                    tok->isLong(true);
             } else if (Token::Match(tok, "LPBOOL|PBOOL")) {
                 tok->str("int");
                 tok->insertToken("*");
             } else if (Token::Match(tok, "LPBYTE|PBOOLEAN|PBYTE|PUCHAR")) {
-                tok->str("unsigned");
+                tok->isUnsigned(true);
+                tok->str("char");
                 tok->insertToken("*");
-                tok->insertToken("char");
             } else if (Token::Match(tok, "LPCSTR|PCSTR")) {
                 tok->str("const");
                 tok->insertToken("*");
@@ -5430,9 +5474,9 @@ void Tokenizer::simplifyPlatformTypes()
                 tok->insertToken("*");
                 tok->insertToken("void");
             } else if (Token::Match(tok, "LPDWORD|LPCOLORREF|PDWORD|PULONG")) {
-                tok->str("unsigned");
+                tok->isUnsigned(true);
+                tok->str("long");
                 tok->insertToken("*");
-                tok->insertToken("long");
             } else if (Token::Match(tok, "LPINT|PINT")) {
                 tok->str("int");
                 tok->insertToken("*");
@@ -5453,25 +5497,25 @@ void Tokenizer::simplifyPlatformTypes()
                 tok->insertToken("*");
                 tok->insertToken("*");
             } else if (Token::Match(tok, "LPWORD|PWORD|PUSHORT")) {
-                tok->str("unsigned");
+                tok->isUnsigned(true);
+                tok->str("short");
                 tok->insertToken("*");
-                tok->insertToken("short");
             } else if (tok->str() == "SHORT")
                 tok->str("short");
             else if (Token::Match(tok, "UINT|MMRESULT|SOCKET|ULONG32|UINT32|DWORD32")) {
-                tok->str("unsigned");
-                tok->insertToken("int");
+                tok->isUnsigned(true);
+                tok->str("int");
             } else if (Token::Match(tok, "UINT_PTR|WPARAM")) {
-                tok->str("unsigned");
+                tok->isUnsigned(true);
                 if (_settings->platformType == Settings::Win64) {
-                    tok->insertToken("long");
-                    tok->insertToken("long");
+                    tok->str("long");
+                    tok->isLong(true);
                 } else {
-                    tok->insertToken("int");
+                    tok->str("int");
                 }
             } else if (Token::Match(tok, "USHORT|WORD|ATOM|LANGID")) {
-                tok->str("unsigned");
-                tok->insertToken("short");
+                tok->isUnsigned(true);
+                tok->str("short");
             } else if (tok->str() == "VOID")
                 tok->str("void");
             else if (tok->str() == "TCHAR") {
@@ -5481,11 +5525,11 @@ void Tokenizer::simplifyPlatformTypes()
                     tok->str("wchar_t");
                 }
             } else if (tok->str() == "TBYTE") {
-                tok->str("unsigned");
+                tok->isUnsigned(true);
                 if (_settings->platformType == Settings::Win32A)
-                    tok->insertToken("short");
+                    tok->str("short");
                 else
-                    tok->insertToken("char");
+                    tok->str("char");
             } else if (Token::Match(tok, "PTSTR|LPTSTR")) {
                 if (_settings->platformType == Settings::Win32A) {
                     tok->str("char");
@@ -5504,8 +5548,9 @@ void Tokenizer::simplifyPlatformTypes()
                     tok->insertToken("wchar_t");
                 }
             } else if (Token::Match(tok, "ULONG64|DWORD64")) {
-                tok->str("unsigned");
-                tok->insertToken("long");
+                tok->isUnsigned(true);
+                tok->isLong(true);
+                tok->str("long");
             } else if (tok->str() == "HALF_PTR") {
                 if (_settings->platformType == Settings::Win64)
                     tok->str("int");
@@ -6165,7 +6210,7 @@ bool Tokenizer::simplifyKnownVariables()
                     break;
             }
 
-            else if (tok2->previous()->str() != "*" &&
+            else if (tok2->previous()->str() != "*" && !Token::Match(tok2->tokAt(-2), "* --|++") &&
                      (Token::Match(tok2, "%var% = %bool%|%char%|%num%|%str%|%var% ;") ||
                       Token::Match(tok2, "%var% [ ] = %str% ;") ||
                       Token::Match(tok2, "%var% [ %num% ] = %str% ;") ||
@@ -6233,12 +6278,28 @@ bool Tokenizer::simplifyKnownVariables()
                 const std::string structname;
 
                 const Token *valueToken = tok2->tokAt(3);
-                std::string value(tok2->strAt(3));
+                std::string value(tok2->strAt(3)), savedValue = value;
                 const unsigned int valueVarId = 0;
                 const bool valueIsPointer = false;
 
-                Token *scopeStart = tok2->tokAt(6);
-                ret |= simplifyKnownVariablesSimplify(&scopeStart, scopeStart, varid, structname, value, valueIsPointer, valueVarId, valueToken, -1);
+                // Insert a "%var% = %num% ;" at the beginning of the scope as simplifyKnownVariablesSimplify might compute an updated value
+                Token *scopeStart = tok2->tokAt(5);
+                scopeStart->insertToken(tok2->tokAt(1)->str());
+                scopeStart = scopeStart->next();
+                Token* artificialAssignment = scopeStart;
+                scopeStart->insertToken("=");
+                scopeStart = scopeStart->next();
+                scopeStart->insertToken(valueToken->str());
+                scopeStart = scopeStart->next();
+                scopeStart->insertToken(";");
+                scopeStart = scopeStart->next();
+
+                ret |= simplifyKnownVariablesSimplify(&artificialAssignment, tok2->tokAt(6), varid, structname, value, valueIsPointer, valueVarId, valueToken, -1);
+
+                // Remove the artificial assignment if no modification was done
+                if (artificialAssignment->tokAt(2)->str() == savedValue) {
+                    Token::eraseTokens(tok2->tokAt(5), scopeStart->next());
+                }
             }
 
             else if (Token::Match(tok2, "strcpy|sprintf ( %var% , %str% ) ;")) {
@@ -6351,9 +6412,6 @@ bool Tokenizer::simplifyKnownVariablesSimplify(Token **tok2, Token *tok3, unsign
         _errorLogger->reportProgress(list.getFiles()[0], "Tokenize (simplifyKnownVariables)", tok3->progressValue());
 
     bool ret = false;
-
-    // skip increments and decrements if the given indentlevel is -1
-    const bool skipincdec = (indentlevel == -1);
 
     Token* bailOutFromLoop = 0;
     int indentlevel3 = indentlevel;
@@ -6695,7 +6753,7 @@ bool Tokenizer::simplifyKnownVariablesSimplify(Token **tok2, Token *tok3, unsign
             }
         }
 
-        if (!skipincdec && indentlevel == indentlevel3 && Token::Match(tok3->next(), "%varid% ++|--", varid) && MathLib::isInt(value)) {
+        if (indentlevel == indentlevel3 && Token::Match(tok3->next(), "%varid% ++|--", varid) && MathLib::isInt(value)) {
             const std::string op(tok3->strAt(2));
             if (Token::Match(tok3, "[{};] %any% %any% ;")) {
                 tok3->deleteNext(3);
@@ -7565,14 +7623,11 @@ void Tokenizer::simplifyEnum()
                 bool hasClass = false;
                 EnumValue *ev = NULL;
 
-                int executableScopeLevel = 0;
-
                 if (!tok1)
                     return;
                 for (Token *tok2 = tok1->next(); tok2; tok2 = tok2->next()) {
                     if (tok2->str() == "}") {
                         --level;
-                        --executableScopeLevel;
                         if (level < 0)
                             inScope = false;
 
@@ -7596,40 +7651,23 @@ void Tokenizer::simplifyEnum()
                             // Not a duplicate enum..
                             ++level;
 
-                            if (executableScopeLevel > 0)
-                                ++executableScopeLevel;
-
                             // Create a copy of the shadow ids for the inner scope
                             if (!shadowId.empty())
                                 shadowId.push(shadowId.top());
 
                             // are there shadow arguments?
                             if (Token::simpleMatch(tok2->previous(), ") {") || Token::simpleMatch(tok2->tokAt(-2), ") const {")) {
-                                // Determine if this is a executable scope..
-                                if (executableScopeLevel <= 0) {
-                                    const Token *prev = tok2->previous();
-                                    while (prev) {
-                                        if (prev->str() == "}" || prev->str() == ")")
-                                            prev = prev->link();
-                                        else if (prev->str() == "{") {
-                                            while ((prev = prev->previous()) && (prev->isName()));
-                                            if (!prev || prev->str() == ")")
-                                                break;
-                                        }
-                                        prev = prev->previous();
-                                    }
-
-                                    if (prev)
-                                        executableScopeLevel = 1;
-                                }
-
-                                bool executableScope = (executableScopeLevel > 0);
-
                                 std::set<std::string> shadowArg;
                                 for (const Token* arg = tok2; arg && arg->str() != "("; arg = arg->previous()) {
                                     if (Token::Match(arg->previous(), "%type%|*|& %type% [,)]") &&
                                         enumValues.find(arg->str()) != enumValues.end()) {
-                                        if (executableScope && Token::Match(arg->previous(), "[*&]"))
+                                        // is this a variable declaration
+                                        const Token *prev = arg;
+                                        while (Token::Match(prev,"%type%|*|&"))
+                                            prev = prev->previous();
+                                        if (!Token::Match(prev,"[,(] %type%"))
+                                            continue;
+                                        if (prev->str() == "(" && (!Token::Match(prev->tokAt(-2), "%type%|::|*|& %type% (") || prev->strAt(-2) == "else"))
                                             continue;
                                         shadowArg.insert(arg->str());
                                         if (inScope && _settings->isEnabled("style")) {
@@ -8887,7 +8925,7 @@ void Tokenizer::simplifyAttribute()
 void Tokenizer::simplifyKeyword()
 {
     for (Token *tok = list.front(); tok; tok = tok->next()) {
-        while (Token::Match(tok, "volatile|inline|__inline|__forceinline|register|__restrict|__restrict__")) {
+        while (Token::Match(tok, "volatile|inline|_inline|__inline|__forceinline|register|__restrict|__restrict__")) {
             tok->deleteThis();
         }
     }
@@ -9520,12 +9558,14 @@ void Tokenizer::createSymbolDatabase()
             // Since it doesn't point at a fixed location it doesn't have varid
             if (tok->variable() != NULL &&
                 tok->variable()->typeScope() &&
-                Token::Match(tok, "%var% [")) {
+                Token::Match(tok, "%var% [|.")) {
 
-                // Locate "]"
                 Token *tok2 = tok->next();
-                while (tok2 && tok2->str() == "[")
-                    tok2 = tok2->link()->next();
+                // Locate "]"
+                if (tok->next()->str() == "[") {
+                    while (tok2 && tok2->str() == "[")
+                        tok2 = tok2->link()->next();
+                }
 
                 Token *membertok = NULL;
                 if (Token::Match(tok2, ". %var%"))
@@ -9738,23 +9778,28 @@ void Tokenizer::simplifyReturnStrncat()
 
 void Tokenizer::printUnknownTypes()
 {
-    std::set<std::string> unknowns;
+    std::multimap<std::string, const Token *> unknowns;
 
     for (unsigned int i = 1; i <= _varId; ++i) {
         const Variable *var = _symbolDatabase->getVariableFromVarId(i);
 
         // is unknown type?
         if (var && !var->type() && !var->typeStartToken()->isStandardType()) {
-            std::string    name;
+            std::string name;
+            const Token * nameTok;
 
             // single token type?
-            if (var->typeStartToken() == var->typeEndToken())
+            if (var->typeStartToken() == var->typeEndToken()) {
                 name = var->typeStartToken()->str();
+                nameTok = var->typeStartToken();
+            }
 
             // complicated type
             else {
                 const Token *tok = var->typeStartToken();
                 int level = 0;
+
+                nameTok =  tok;
 
                 while (tok) {
                     // skip pointer and reference part of type
@@ -9779,23 +9824,29 @@ void Tokenizer::printUnknownTypes()
                 }
             }
 
-            unknowns.insert(name);
+            unknowns.insert(std::pair<std::string, const Token *>(name, nameTok));
         }
     }
 
     if (!unknowns.empty()) {
-        std::ostringstream ss;
+        std::multimap<std::string, const Token *>::const_iterator it;
+        std::string last;
+        size_t count;
 
-        ss << unknowns.size() << " unknown types:" << std::endl;
-
-        std::set<std::string>::const_iterator it;
-        std::size_t count = 1;
-
-        for (it = unknowns.begin(); it != unknowns.end(); ++it, ++count)
-            ss << count << ": " << *it << std::endl;
-
-        if (_errorLogger)
-            _errorLogger->reportOut(ss.str());
+        for (it = unknowns.begin(); it != unknowns.end(); ++it) {
+            // skip types is std namespace because they are not interesting
+            if (it->first.find("std::") != 0) {
+                if (it->first != last) {
+                    last = it->first;
+                    count = 1;
+                    reportError(it->second, Severity::debug, "debug", "Unknown type \'" + it->first + "\'.");
+                } else {
+                    if (count < 3) // limit same type to 3
+                        reportError(it->second, Severity::debug, "debug", "Unknown type \'" + it->first + "\'.");
+                    count++;
+                }
+            }
+        }
     }
 }
 

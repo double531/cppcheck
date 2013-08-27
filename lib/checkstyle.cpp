@@ -101,13 +101,13 @@ void CCheckStyle::dumpTokens( )
 void CCheckStyle::checkComplete( )
 {
     //ds loop through all tokens of the current file
-    for( const Token* pcCurrent = _tokenizer->tokens( ); pcCurrent != 0; pcCurrent = pcCurrent->next( ) )
+    for( const Token* pcCurrent = _tokenizer->getCustomTokenListFront( ); pcCurrent != 0; pcCurrent = pcCurrent->next( ) )
     {
         //ds check if we got a function (always precedes a variable)
         if( Token::eFunction == pcCurrent->type( ) )
         {
             //ds get the function handle
-            const Function* pcFunction = pcCurrent->function( );
+            const Function* pcFunction( pcCurrent->function( ) );
 
             //ds check if the function is real (sometimes get 0 pointers from the statement above) and if we don't have it already checked
             if( 0 != pcFunction && false == _isChecked( pcFunction ) )
@@ -146,7 +146,7 @@ void CCheckStyle::checkComplete( )
                 for( std::list< Variable >::const_iterator itVariable = pcFunction->argumentList.begin( ); itVariable != pcFunction->argumentList.end( ); ++itVariable )
                 {
                     //ds get the variable from the iterator (this avoids the overloading of checkPrefix( ) for a const_iterator Variable)
-                    Variable cVariable = *itVariable;
+                    Variable cVariable( *itVariable );
 
                     //ds check for a parameter variable
                     checkPrefixVariable( pcCurrent, &cVariable, "parameter" );
@@ -158,7 +158,7 @@ void CCheckStyle::checkComplete( )
         else if( Token::eVariable == pcCurrent->type( ) )
         {
             //ds get the variable handle
-            const Variable* pcVariable = pcCurrent->variable( );
+            const Variable* pcVariable( pcCurrent->variable( ) );
 
             //ds check if the variable is real (sometimes get 0 pointers from the statement above) and we don't have it already checked
             if( 0 != pcVariable && false == _isChecked( pcVariable ) )
@@ -197,7 +197,7 @@ void CCheckStyle::checkComplete( )
         else if( "assert" == pcCurrent->str( ) )
         {
             //ds make sure we really caught an assert by checking the brackets
-            if( "(" == pcCurrent->next( )->str( ) )
+            if( 0 != pcCurrent->next( ) && "(" == pcCurrent->next( )->str( ) )
             {
                 //ds check if it is linked
                 if( 0 != pcCurrent->next( )->link( ) )
@@ -208,29 +208,29 @@ void CCheckStyle::checkComplete( )
             }
         }
 
-        /*ds always check for boost pointer initializations (unfortunately cppcheck does not recognize boost::shared_ptr< char > test( new char[123] );)
-        if( "shared_ptr" == pcCurrent->str( ) || "scoped_ptr" == pcCurrent->str( ) )
-        {
-            //ds call the check procedure
-            checkBoostPointer( pcCurrent );
-        }*/
-
         //ds check if we got a comment
         else if( Token::eComment == pcCurrent->type( ) )
         {
             //ds call comment checking procedure
             checkComment( pcCurrent );
         }
+
+        //ds always check for boost pointer initializations (unfortunately cppcheck does not recognize boost::shared_ptr< char > test( new char[123] );)
+        if( "shared_ptr" == pcCurrent->str( ) || "scoped_ptr" == pcCurrent->str( ) )
+        {
+            //ds call the check procedure
+            checkBoostPointer( pcCurrent );
+        }
     }
 }
 
-void CCheckStyle::checkCompleteError( const Token* p_Token, const std::string p_strErrorInformation, const Severity::SeverityType p_cSeverity  )
+void CCheckStyle::checkCompleteError( const Token* p_Token, const std::string& p_strErrorInformation, const Severity::SeverityType& p_cSeverity  )
 {
     //ds report the error
     reportError( p_Token, p_cSeverity, "checkNames", p_strErrorInformation );
 }
 
-void CCheckStyle::checkPrefixFunction( const Token* p_pcToken, const Function* p_pcFunction, const std::string p_strFunctionScopePrefix )
+void CCheckStyle::checkPrefixFunction( const Token* p_pcToken, const Function* p_pcFunction, const std::string& p_strFunctionScopePrefix )
 {
     //ds check input
     if( 0 == p_pcToken  )
@@ -273,7 +273,7 @@ void CCheckStyle::checkPrefixFunction( const Token* p_pcToken, const Function* p
     }
 }
 
-void CCheckStyle::checkPrefixVariable( const Token* p_pcToken, const Variable* p_pcVariable, const std::string p_strVariableScopePrefix )
+void CCheckStyle::checkPrefixVariable( const Token* p_pcToken, const Variable* p_pcVariable, const std::string& p_strVariableScopePrefix )
 {
     //ds check input
     if( 0 == p_pcToken  )
@@ -463,51 +463,55 @@ void CCheckStyle::checkAssert( const Token* p_pcToken )
 
 void CCheckStyle::checkComment( const Token* p_pcToken )
 {
-    //ds only handle comments
-    if( Token::eComment == p_pcToken->type( ) )
+    //ds get comment
+    const std::string strComment( p_pcToken->str( ) );
+
+    //ds check for too short comments (shortest allowed is //! or /**)
+    if( 3 > strComment.length( ) )
     {
-        //ds get comment
-        const std::string strComment( p_pcToken->str( ) );
+        checkCompleteError( p_pcToken, "single-line comment: \"" + strComment + "\" is too short", Severity::style );
 
-        //ds check if single line or not
-        if( true == p_pcToken->isSingleLine( ) )
+        //ds fatal - skip further checks
+        return;
+    }
+
+    //ds check if single line or not
+    if( true == p_pcToken->isSingleLine( ) )
+    {
+        //ds if there is a space after the opening its invalid (we use substr and not char[] operations because substr can throw)
+        if( "// " == strComment.substr( 0, 3 ) )
         {
-            //ds check for too short comments (shortest allowed is //!)
-            if( 3 >= strComment.length( ) )
-            {
-                checkCompleteError( p_pcToken, "one-line comment: \"" + strComment + "\" is too short", Severity::style );
-            }
+            checkCompleteError( p_pcToken, "single-line comment: \"" + strComment + "\" has invalid format - correct: \"//xx ...\" or \"//! ...\"", Severity::style );
+        }
 
-            //ds if there is a space after the opening its invalid (we use substr and not char[] operations because substr can throw)
-            if( " " == strComment.substr( 2, 1 ) )
+        //ds //!
+        else if( "//!" == strComment.substr( 0, 3 ) )
+        {
+            //ds there must be a space after the !
+            if( 4 <= strComment.length( ) && " " != strComment.substr( 3, 1 ) )
             {
-                checkCompleteError( p_pcToken, "one-line comment: \"" + strComment + "\" has invalid format - correct: \"//xx ...\" or \"//! ...\"", Severity::style );
-            }
-
-            //ds //!
-            else if( "!" == strComment.substr( 2, 1 ) )
-            {
-                //ds there must be a space after the !
-                if( 4 <= strComment.length( ) && " " != strComment.substr( 3, 1 ) )
-                {
-                    checkCompleteError( p_pcToken, "one-line comment: \"" + strComment + "\" has invalid format - correct: \"//! ...\"", Severity::style );
-                }
-            }
-
-            //ds //x or //xx or //xxx..
-            else
-            {
-                //ds there must be a space after the second initial
-                if( 5 <= strComment.length( ) && " " != strComment.substr( 4, 1 ) )
-                {
-                    checkCompleteError( p_pcToken, "one-line comment: \"" + strComment + "\" has invalid format - correct: \"//xx ...\"", Severity::style );
-                }
+                checkCompleteError( p_pcToken, "single-line comment: \"" + strComment + "\" has invalid format - correct: \"//! ...\"", Severity::style );
             }
         }
+
+        //ds //x or //xx or //xxx..
         else
         {
-            //ds multi line comment
-            checkCompleteError( p_pcToken, "multi-line comment: \"" + strComment + "\" has any format - correct: \"//** ...\"", Severity::style );
+            //ds there must be a space after the second initial
+            if( 5 <= strComment.length( ) && " " != strComment.substr( 4, 1 ) )
+            {
+                checkCompleteError( p_pcToken, "single-line comment: \"" + strComment + "\" has invalid format - correct: \"//xx ...\"", Severity::style );
+            }
+        }
+    }
+
+    //ds multi line comment
+    else
+    {
+        //ds check for the second star
+        if( "/**" != strComment.substr( 0, 3 ) )
+        {
+            checkCompleteError( p_pcToken, "multi-line comment: \"" + strComment + "\" has invalid format - correct: \"/** ...\"", Severity::style );
         }
     }
 }
@@ -523,7 +527,7 @@ void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
     const std::string strPointerName( p_pcToken->str( ) );
 
     //ds get the end of the type definition
-    const Token* pcEndToken = p_pcToken->findsimplematch( p_pcToken, ";" );
+    const Token* pcEndToken( p_pcToken->findsimplematch( p_pcToken, ";" ) );
 
     //ds escape if no end was found
     if( 0 == pcEndToken )
@@ -534,21 +538,56 @@ void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
     //ds pointer name
     std::string strVariableName( "" );
 
-    //ds determine which configuration we have - first is the one cppcheck can not parse
-    if( ")" == pcEndToken->previous( )->str( ) )
+    //ds check if we have a previous token to check
+    if( 0 != pcEndToken->previous( ) )
     {
-        //ds the end token does not have to be shifted - we can directly get the pointers name
-        strVariableName = pcEndToken->previous( )->link( )->previous( )->str( );
+        //ds determine which configuration we have - first case: boost::shared_ptr< char > pPointer1( new char[10] )
+        if( ")" == pcEndToken->previous( )->str( ) )
+        {
+            //ds get the link
+            const Token* pcTokenLink( pcEndToken->previous( ) );
 
-    }
-    else
-    {
-        //ds the pointers name must be right before the first ;
-        strVariableName = pcEndToken->previous( )->str( );
+            if( 0 != pcTokenLink->link( ) )
+            {
+                pcTokenLink = pcTokenLink->link( )->previous( );
+            }
+            else
+            {
+                //ds TODO throw - fatal
+                return;
+            }
 
-        //ds there is a second definition - shift the end token
-        pcEndToken = pcEndToken->next( );
-        pcEndToken = pcEndToken->findsimplematch( pcEndToken, ";" );
+            //ds the end token does not have to be shifted
+            if( 0 != pcTokenLink )
+            {
+                //ds we can directly get the pointers name
+                strVariableName = pcTokenLink->str( );
+            }
+            else
+            {
+                //ds TODO throw - fatal
+                return;
+            }
+        }
+        else
+        {
+            //ds the pointers name must be right before the first ;
+            strVariableName = pcEndToken->previous( )->str( );
+
+            //ds there is a second definition - shift the end token
+            pcEndToken = pcEndToken->next( );
+
+            //ds if we could shift
+            if( 0 != pcEndToken )
+            {
+                pcEndToken = pcEndToken->findsimplematch( pcEndToken, ";" );
+            }
+            else
+            {
+                //ds TODO throw - fatal
+                return;
+            }
+        }
     }
 
     //ds type name (gets built up during array search - this is possible because the type must appear before the new call)
@@ -560,70 +599,74 @@ void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
     //ds check if new call was found
     bool bIsNewCallFound( false );
 
-    //ds find the argument before the end token
-    for( const Token* itToken = p_pcToken->next( ); itToken != pcEndToken; itToken = itToken->next( ) )
+    //ds if the end token is valid
+    if( 0 != pcEndToken )
     {
-        //ds check if an opening bracket is found
-        if( "<" == itToken->str( ) )
+        //ds find the argument before the end token
+        for( const Token* itToken = p_pcToken->next( ); itToken != pcEndToken; itToken = itToken->next( ) )
         {
-            ++uOpenBrackets;
+            //ds check if an opening bracket is found
+            if( "<" == itToken->str( ) )
+            {
+                ++uOpenBrackets;
 
-            //ds go on
-            continue;
-        }
+                //ds go on
+                continue;
+            }
 
-        //ds check if a closing bracket is found
-        if( ">" == itToken->str( ) )
-        {
-            --uOpenBrackets;
+            //ds check if a closing bracket is found
+            if( ">" == itToken->str( ) )
+            {
+                --uOpenBrackets;
 
-            //ds go on
-            continue;
-        }
+                //ds go on
+                continue;
+            }
 
-        //ds look for a new call (this is no violation yet)
-        if( "new" == itToken->str( ) )
-        {
-            bIsNewCallFound = true;
-        }
+            //ds look for a new call (this is no violation yet)
+            if( "new" == itToken->str( ) )
+            {
+                bIsNewCallFound = true;
+            }
 
-        //ds as long as there are open brackets record the information inbetween
-        if( 0 != uOpenBrackets )
-        {
-            strTypeName += itToken->str( );
-        }
+            //ds as long as there are open brackets record the information in between
+            if( 0 != uOpenBrackets )
+            {
+                strTypeName += itToken->str( );
+            }
 
-        //ds escape if we reach a function or parameter end
-        if( ")" == itToken->str( ) )
-        {
-            return;
-        }
+            //ds escape if we reach a function or parameter end
+            if( ")" == itToken->str( ) )
+            {
+                return;
+            }
 
-        //ds once the new call is found a following array opener [ is fatal
-        if( true == bIsNewCallFound && "[" == itToken->str( ) )
-        {
-            //ds trigger error message
-            checkCompleteError( p_pcToken, "forbidden array initialization of class: boost::" + strPointerName + "< " + strTypeName + " > " + strVariableName + " - please use: boost::shared_array< " + strTypeName  + " >", Severity::style );
+            //ds once the new call is found a following array opener [ is fatal
+            if( true == bIsNewCallFound && "[" == itToken->str( ) )
+            {
+                //ds trigger error message
+                checkCompleteError( p_pcToken, "forbidden array initialization of class: boost::" + strPointerName + "< " + strTypeName + " > " + strVariableName + " - please use: boost::shared_array< " + strTypeName  + " >", Severity::style );
+            }
         }
     }
 }
 
-bool CCheckStyle::_isBoostPointer( const std::string strTypeName ) const
+bool CCheckStyle::_isBoostPointer( const std::string& p_strTypeName ) const
 {
-    //ds check all valid cases
-    if( std::string::npos != strTypeName.find( "boost::shared_ptr" ) )
+    //ds check all valid cases - the string has to start with the pointer
+    if( 16 < p_strTypeName.length( ) && "boost::shared_ptr" == p_strTypeName.substr( 0, 17 ) )
     {
         return true;
     }
-    else if( std::string::npos != strTypeName.find( "shared_ptr" ) )
+    else if( 9 < p_strTypeName.length( ) && "shared_ptr" == p_strTypeName.substr( 0, 10 ) )
     {
         return true;
     }
-    else if( std::string::npos != strTypeName.find( "boost::scoped_ptr" ) )
+    else if( 16 < p_strTypeName.length( ) && "boost::scoped_ptr" == p_strTypeName.substr( 0, 17 ) )
     {
         return true;
     }
-    else if( std::string::npos != strTypeName.find( "scoped_ptr" ) )
+    else if( 9 < p_strTypeName.length( ) && "scoped_ptr" == p_strTypeName.substr( 0, 10 ) )
     {
         return true;
     }
@@ -634,22 +677,22 @@ bool CCheckStyle::_isBoostPointer( const std::string strTypeName ) const
     }
 }
 
-bool CCheckStyle::_isBoostArray( const std::string strTypeName ) const
+bool CCheckStyle::_isBoostArray( const std::string& p_strTypeName ) const
 {
-    //ds check all valid cases
-    if( std::string::npos != strTypeName.find( "boost::shared_array" ) )
+    //ds check all valid cases - the string has to start with the pointer
+    if( 18 < p_strTypeName.length( ) && "boost::shared_array" == p_strTypeName.substr( 0, 19 ) )
     {
         return true;
     }
-    else if( std::string::npos != strTypeName.find( "shared_array" ) )
+    else if( 11 < p_strTypeName.length( ) && "shared_array" == p_strTypeName.substr( 0, 12 ) )
     {
         return true;
     }
-    else if( std::string::npos != strTypeName.find( "boost::scoped_array" ) )
+    else if( 18 < p_strTypeName.length( ) && "boost::scoped_array" == p_strTypeName.substr( 0, 19 ) )
     {
         return true;
     }
-    else if( std::string::npos != strTypeName.find( "scoped_array" ) )
+    else if( 11 < p_strTypeName.length( ) && "scoped_array" == p_strTypeName.substr( 0, 12 ) )
     {
         return true;
     }
@@ -702,7 +745,7 @@ const std::string CCheckStyle::_getVariableType( const Variable* p_pcVariable ) 
     return strType;
 }
 
-const std::string CCheckStyle::_filterVariableTypeComplete( const std::string p_strType ) const
+const std::string CCheckStyle::_filterVariableTypeComplete( const std::string& p_strType ) const
 {
     std::string strTypeFiltered( "" );
 
@@ -750,7 +793,7 @@ const std::string CCheckStyle::_filterVariableTypeComplete( const std::string p_
     return strTypeFiltered;
 }
 
-const std::string CCheckStyle::_filterVariableTypeKeepNamespace( const std::string p_strType ) const
+const std::string CCheckStyle::_filterVariableTypeKeepNamespace( const std::string& p_strType ) const
 {
     std::string strTypeFiltered( "" );
 

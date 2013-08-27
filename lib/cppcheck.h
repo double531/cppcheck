@@ -212,6 +212,9 @@ private:
     /** Simplify code? true by default */
     bool _simplify;
 
+    //ds code with comments and whitespaces
+    std::string m_strRawCode;
+
 };
 
 /// @}

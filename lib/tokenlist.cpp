@@ -18,7 +18,6 @@
 
 //---------------------------------------------------------------------------
 #include "tokenlist.h"
-#include "token.h"
 #include "mathlib.h"
 #include "path.h"
 #include "preprocessor.h"
@@ -29,13 +28,14 @@
 #include <sstream>
 #include <cctype>
 #include <stack>
-//#include <iostream> //ds live debugging
 
 
 TokenList::TokenList(const Settings* settings) :
     _front(0),
     _back(0),
-    _settings(settings)
+    _settings(settings),
+    m_pcCustomTokenFront( 0 ),
+    m_pcCustomTokenBack( 0 )
 {
 }
 
@@ -52,6 +52,12 @@ void TokenList::deallocateTokens()
     deleteTokens(_front);
     _front = 0;
     _back = 0;
+
+    //ds clean up all tokens
+    deleteTokens( m_pcCustomTokenFront );
+    m_pcCustomTokenFront = 0;
+    m_pcCustomTokenBack = 0;
+
     _files.clear();
 }
 
@@ -126,10 +132,62 @@ void TokenList::addtoken(const Token * tok, const unsigned int lineno, const uns
 
     _back->linenr(lineno);
     _back->fileIndex(fileno);
+
     _back->isUnsigned(tok->isUnsigned());
     _back->isSigned(tok->isSigned());
     _back->isLong(tok->isLong());
     _back->isUnused(tok->isUnused());
+
+    //ds import the token type
+    _back->type( tok->type( ) );
+
+    //ds always import the scope
+    _back->scope( tok->scope( ) );
+
+    //ds import special attributes (only one possible at a time)
+    if( 0 != tok->function( ) )
+    {
+        //ds set the function pointer
+        _back->function( tok->function( ) );
+    }
+    else if( 0 != tok->variable( ) )
+    {
+        //ds set all variable attributes
+        _back->variable( tok->variable( ) );
+        _back->varId( tok->varId( ) );
+    }
+}
+
+//ds custom token adding
+void TokenList::addCustomToken( const std::string& p_strToken, const unsigned int& p_uLineNumber, const unsigned int& p_uFileIndex, const Token::Type& p_cType )
+{
+    //ds add the token to our list (check if back is set)
+    if( 0 != m_pcCustomTokenBack )
+    {
+        //ds simply add the token
+        m_pcCustomTokenBack->insertToken( p_strToken );
+
+        //ds add the token type
+        m_pcCustomTokenBack->type( p_cType );
+    }
+    else
+    {
+        //ds if back is not set yet create a new token
+        m_pcCustomTokenFront = new Token( &m_pcCustomTokenBack );
+
+        //ds link back to it
+        m_pcCustomTokenBack = m_pcCustomTokenFront;
+
+        //ds add the token name
+        m_pcCustomTokenBack->str( p_strToken );
+
+        //ds add the token type
+        m_pcCustomTokenBack->type( p_cType );
+    }
+
+    //ds add line and fileno
+    m_pcCustomTokenBack->linenr( p_uLineNumber );
+    m_pcCustomTokenBack->fileIndex( p_uFileIndex );
 }
 //---------------------------------------------------------------------------
 // InsertTokens - Copy and insert tokens
@@ -169,7 +227,7 @@ void TokenList::insertTokens(Token *dest, const Token *src, unsigned int n)
 // Tokenize - tokenizes a given file.
 //---------------------------------------------------------------------------
 
-bool TokenList::createTokens(std::istream &code, const std::string& file0)
+bool TokenList::createTokens(std::istream &code, const std::string& file0, const std::string& p_strRawCode)
 {
     _files.push_back(file0);
 
@@ -194,12 +252,6 @@ bool TokenList::createTokens(std::istream &code, const std::string& file0)
 
     bool expandedMacro = false;
 
-    /*ds dump code
-    for( unsigned int u = code.get( ); code.good( ); u = code.get( ) )
-    {
-        std::cout << char( u );
-    }*/
-
     // Read one byte at a time from code and create tokens
     for (char ch = (char)code.get(); code.good(); ch = (char)code.get()) {
         if (ch == Preprocessor::macroChar) {
@@ -209,88 +261,6 @@ bool TokenList::createTokens(std::istream &code, const std::string& file0)
             expandedMacro = true;
         } else if (ch == '\n') {
             expandedMacro = false;
-        }
-
-        //ds check for a possible comment start
-        else if( '/' == ch && ( '/' == code.peek( ) || '*' == code.peek( ) ) )
-        {
-            //ds determine which type we have - first case one-line comments
-            if( '/' == code.peek( ) )
-            {
-                //ds comment buffer
-                std::string strComment( "" );
-
-                //ds read to the end of the line
-                std::getline( code, strComment );
-
-                //ds add the comment beginning
-                strComment = "/" + strComment;
-
-                //ds add the comment to the tokens list
-                addtoken( strComment.c_str( ), lineno, FileIndex );
-
-                //ds set macro if string wasn't empty
-                if( false == strComment.empty( ) )
-                {
-                    _back->setExpandedMacro( expandedMacro );
-                }
-
-                //ds increment line number
-                ++lineno;
-
-                //ds HACK - this is needed because the parses would get confused if there is a statement not ending with a semicolon (like a comment)
-                ch = ';';
-            }
-
-            //ds multi-line comment
-            else if( '*' == code.peek( ) )
-            {
-                //ds add the start
-                std::string strComment( "/" );
-
-                //ds temporary line number
-                unsigned int uCommentLines( 0 );
-
-                //ds one-line case we just have to seek the first *//* - start looping from the *
-                for( unsigned int u = code.get( ); code.good( ); u = code.get( ) )
-                {
-                    //ds break if the end of the comment was found
-                    if( '*' == char( u ) &&  '/' == char( code.peek( ) ) )
-                    {
-                        //ds we want to keep the end in the string
-                        strComment += "*/";
-
-                        //ds escape for loop
-                        break;
-                    }
-                    else
-                    {
-                        //ds add the content as long as we don't reach the *//*
-                        strComment += char( u );
-
-                        //ds if we reach an endline increment the line number
-                        if( '\n' == char( u ) )
-                        {
-                            ++uCommentLines;
-                        }
-                    }
-                }
-
-                //ds add the comment to the tokens list
-                addtoken( strComment.c_str( ), lineno, FileIndex );
-
-                //ds set macro if string wasn't empty
-                if( false == strComment.empty( ) )
-                {
-                    _back->setExpandedMacro( expandedMacro );
-                }
-
-                //ds update the line number
-                lineno += uCommentLines;
-
-                //ds HACK - this is needed because the parses would get confused if there is a statement not ending with a semicolon (like a comment)
-                ch = ';';
-            }
         }
 
         // char/string..
@@ -437,7 +407,148 @@ bool TokenList::createTokens(std::istream &code, const std::string& file0)
         _back->setExpandedMacro(expandedMacro);
     _front->assignProgressValues();
 
-    for (unsigned int i = 1; i < _files.size(); i++)
+    //ds start parsing the raw code if available
+    if( false == p_strRawCode.empty( ) )
+    {
+        //ds fileid should be known
+        bool bFileIDFound( false );
+
+        //ds file id
+        unsigned int uFileIndex( 0 );
+
+        //ds line number
+        unsigned int uLineNumber( 1 );
+
+        //ds get the current fileid
+        for( unsigned int u = 0; u < _files.size( ); ++u )
+        {
+            //ds check if the path matches
+            if (Path::sameFileName( _files[u], file0 ) )
+            {
+                //ds use this index
+                uFileIndex = u;
+
+                //ds we found our fileid
+                bFileIDFound = true;
+            }
+        }
+
+        //ds check if fileid is found
+        if( true == bFileIDFound )
+        {
+            //ds loop over the raw code
+            for( std::string::const_iterator itCharacter = p_strRawCode.begin( ); itCharacter != p_strRawCode.end( ); ++itCharacter )
+            {
+                //ds check for a possible comment beginning
+                if( p_strRawCode.end( ) != ( itCharacter + 1 ) && '/' == *itCharacter )
+                {
+                    //ds check next characters - first case one-line comment
+                    if( '/' == *( itCharacter + 1 ) )
+                    {
+                        //ds add the start
+                        std::string strComment( "/" );
+
+                        //ds success boolean
+                        bool bWasCommentFound( false );
+
+                        //ds one-line case we just have to seek the endline /n - start looping from the second /
+                        for( std::string::const_iterator itComment = itCharacter + 1; itComment != p_strRawCode.end( ); ++itComment )
+                        {
+                            //ds break if the end of the comment was found (10 newline operator)
+                            if( '\n' == *itComment )
+                            {
+                                //ds update external iterator
+                                itCharacter = itComment;
+
+                                //ds set success
+                                bWasCommentFound = true;
+
+                                //ds escape for loop
+                                break;
+                            }
+                            else
+                            {
+                                //ds add the content as long as we don't reach the endline
+                                strComment += *itComment;
+                            }
+                        }
+
+                        if( true == bWasCommentFound )
+                        {
+                            //ds add the token
+                            addCustomToken( strComment, uLineNumber, uFileIndex, Token::eComment );
+
+                            //ds update line number
+                            ++uLineNumber;
+                        }
+                    }
+
+                    //ds second case multi-line comment
+                    else if( '*' == *( itCharacter + 1 ) )
+                    {
+                        //ds add the start
+                        std::string strComment( "/" );
+
+                        //ds success boolean
+                        bool bWasCommentFound( false );
+
+                        //ds counter for the number of lines of the comment
+                        unsigned int uNumberOfLines( 0 );
+
+                        //ds one-line case we just have to seek the first *//* - start looping from the *
+                        for( std::string::const_iterator itComment = itCharacter + 1; itComment != p_strRawCode.end( ); ++itComment )
+                        {
+                            //ds break if the end of the comment was found
+                            if( p_strRawCode.end( ) != ( itComment + 1 ) && '*' == *itComment &&  '/' == *( itComment + 1 ) )
+                            {
+                                //ds here we want to keep the end in the string
+                                strComment += "*/";
+
+                                //ds update external iterator
+                                itCharacter = itComment;
+
+                                //ds set success
+                                bWasCommentFound = true;
+
+                                //ds escape for loop
+                                break;
+                            }
+                            else
+                            {
+                                //ds add the content as long as we don't reach the *//*
+                                strComment += *itComment;
+
+                                //ds if we reach an endline increment the line number
+                                if( '\n' == *itComment )
+                                {
+                                    ++uNumberOfLines;
+                                }
+                            }
+                        }
+
+                        if( true == bWasCommentFound )
+                        {
+                            //ds add the token
+                            addCustomToken( strComment, uLineNumber, uFileIndex, Token::eComment );
+
+                            //ds update the line number
+                            uLineNumber += uNumberOfLines;
+                        }
+                    }
+                }
+
+                //ds check if we get a new line
+                else if( '\n' == *itCharacter )
+                {
+                    //ds increment line counter
+                    ++uLineNumber;
+                }
+            }
+        }
+    }
+
+    //ds set relative file paths just now
+    for(unsigned int i = 1; i < _files.size(); i++)
         _files[i] = Path::getRelativePath(_files[i], _settings->_basePaths);
 
     return true;

@@ -450,6 +450,7 @@ public:
           argDef(NULL),
           token(NULL),
           arg(NULL),
+          retDef(NULL),
           functionScope(NULL),
           nestedIn(NULL),
           initArgCount(0),
@@ -501,6 +502,7 @@ public:
     const Token *argDef;   // function argument start '(' in class definition
     const Token *token;    // function name token in implementation
     const Token *arg;      // function argument start '('
+    const Token *retDef;
     const Scope *functionScope; // scope of function body
     const Scope* nestedIn; // Scope the function is declared in
     std::list<Variable> argumentList; // argument list
@@ -734,6 +736,7 @@ private:
     Function *addGlobalFunction(Scope*& scope, const Token*& tok, const Token *argStart, const Token* funcStart);
     void addNewFunction(Scope **info, const Token **tok);
     static bool isFunction(const Token *tok, const Scope* outerScope, const Token **funcStart, const Token **argStart);
+    const Type *findTypeInNested(const Token *tok, const Scope *startScope) const;
 
     const Tokenizer *_tokenizer;
     const Settings *_settings;

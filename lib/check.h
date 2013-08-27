@@ -114,9 +114,6 @@ protected:
     const Settings * const _settings;
     ErrorLogger * const _errorLogger;
 
-    //ds comments vector
-    std::vector< std::string > m_vecComments;
-
     /** report an error */
     void reportError(const Token *tok, const Severity::SeverityType severity, const std::string &id, const std::string &msg, bool inconclusive = false) {
         std::list<const Token *> callstack(1, tok);

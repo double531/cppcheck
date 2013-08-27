@@ -555,9 +555,11 @@ void CheckIO::checkWrongPrintfScanfArguments()
                         }
 
                         // Perform type checks
-                        if (argListTok && Token::Match(argListTok->next(), "[,)]")) { // We can currently only check the type of arguments matching this simple pattern.
-                            const Variable *variableInfo = argListTok->variable();
-                            const Token* varTypeTok = variableInfo ? variableInfo->typeStartToken() : NULL;
+                        const Variable *variableInfo;
+                        const Token *varTypeTok;
+                        const Function *functionInfo;
+
+                        if (getArgumentInfo(argListTok, &variableInfo, &varTypeTok, &functionInfo)) {
                             if (varTypeTok && varTypeTok->str() == "static")
                                 varTypeTok = varTypeTok->next();
 
@@ -592,7 +594,12 @@ void CheckIO::checkWrongPrintfScanfArguments()
                                     case 'X':
                                     case 'o':
                                         specifier += *i;
-                                        if (varTypeTok && isKnownType(variableInfo, varTypeTok) && !variableInfo->isPointer() && !variableInfo->isArray()) {
+                                        if (functionInfo && varTypeTok && (varTypeTok->isStandardType() || !Token::Match(varTypeTok->next(), "*|&"))) {
+                                            if (!Token::Match(varTypeTok, "bool|short|long|int|char|size_t") ||
+                                                (specifier[0] == 'l' && (varTypeTok->str() != "long" || (specifier[1] == 'l' && !varTypeTok->isLong())))) {
+                                                invalidPrintfArgTypeError_int(tok, numFormat, specifier);
+                                            }
+                                        } else if (variableInfo && varTypeTok && isKnownType(variableInfo, varTypeTok) && !variableInfo->isPointer() && !variableInfo->isArray()) {
                                             if (!Token::Match(varTypeTok, "bool|short|long|int|char|size_t") ||
                                                 (specifier[0] == 'l' && (varTypeTok->str() != "long" || (specifier[1] == 'l' && !varTypeTok->isLong())))) {
                                                 invalidPrintfArgTypeError_int(tok, numFormat, specifier);
@@ -605,7 +612,12 @@ void CheckIO::checkWrongPrintfScanfArguments()
                                     case 'd':
                                     case 'i':
                                         specifier += *i;
-                                        if (varTypeTok && isKnownType(variableInfo, varTypeTok) && !variableInfo->isPointer() && !variableInfo->isArray()) {
+                                        if (functionInfo && varTypeTok && (varTypeTok->isStandardType() || Token::Match(varTypeTok->next(), "*|&"))) {
+                                            if (((varTypeTok->isUnsigned() || !Token::Match(varTypeTok, "bool|short|long|int")) && varTypeTok->str() != "char") ||
+                                                (specifier[0] == 'l' && (varTypeTok->str() != "long" || (specifier[1] == 'l' && !varTypeTok->isLong())))) {
+                                                invalidPrintfArgTypeError_sint(tok, numFormat, specifier);
+                                            }
+                                        } else if (variableInfo && varTypeTok && isKnownType(variableInfo, varTypeTok) && !variableInfo->isPointer() && !variableInfo->isArray()) {
                                             if (((varTypeTok->isUnsigned() || !Token::Match(varTypeTok, "bool|short|long|int")) && varTypeTok->str() != "char") ||
                                                 (specifier[0] == 'l' && (varTypeTok->str() != "long" || (specifier[1] == 'l' && !varTypeTok->isLong())))) {
                                                 invalidPrintfArgTypeError_sint(tok, numFormat, specifier);
@@ -617,7 +629,12 @@ void CheckIO::checkWrongPrintfScanfArguments()
                                         break;
                                     case 'u':
                                         specifier += *i;
-                                        if (varTypeTok && isKnownType(variableInfo, varTypeTok) && !variableInfo->isPointer() && !variableInfo->isArray()) {
+                                        if (functionInfo && varTypeTok && (varTypeTok->isStandardType() || !Token::Match(varTypeTok->next(), "*|&"))) {
+                                            if (((!varTypeTok->isUnsigned() || !Token::Match(varTypeTok, "char|short|long|int|size_t")) && varTypeTok->str() != "bool") ||
+                                                (specifier[0] == 'l' && (varTypeTok->str() != "long" || (specifier[1] == 'l' && !varTypeTok->isLong())))) {
+                                                invalidPrintfArgTypeError_uint(tok, numFormat, specifier);
+                                            }
+                                        } else if (variableInfo && varTypeTok && isKnownType(variableInfo, varTypeTok) && !variableInfo->isPointer() && !variableInfo->isArray()) {
                                             if (((!varTypeTok->isUnsigned() || !Token::Match(varTypeTok, "char|short|long|int|size_t")) && varTypeTok->str() != "bool") ||
                                                 (specifier[0] == 'l' && (varTypeTok->str() != "long" || (specifier[1] == 'l' && !varTypeTok->isLong())))) {
                                                 invalidPrintfArgTypeError_uint(tok, numFormat, specifier);
@@ -628,7 +645,9 @@ void CheckIO::checkWrongPrintfScanfArguments()
                                         done = true;
                                         break;
                                     case 'p':
-                                        if (varTypeTok && isKnownType(variableInfo, varTypeTok) && !Token::Match(varTypeTok, "short|long|int|size_t") && !variableInfo->isPointer() && !variableInfo->isArray())
+                                        if (functionInfo && varTypeTok && varTypeTok->type() == Token::eType && varTypeTok->next()->str() != "*")
+                                            invalidPrintfArgTypeError_p(tok, numFormat);
+                                        else if (variableInfo && varTypeTok && isKnownType(variableInfo, varTypeTok) && !variableInfo->isPointer() && !variableInfo->isArray())
                                             invalidPrintfArgTypeError_p(tok, numFormat);
                                         else if (argListTok->type() == Token::eString)
                                             invalidPrintfArgTypeError_p(tok, numFormat);
@@ -639,13 +658,16 @@ void CheckIO::checkWrongPrintfScanfArguments()
                                     case 'f':
                                     case 'g':
                                     case 'G':
-                                        if (varTypeTok && ((isKnownType(variableInfo, varTypeTok) && !Token::Match(varTypeTok, "float|double")) || variableInfo->isPointer() || variableInfo->isArray())) {
-                                            specifier += *i;
+                                        specifier += *i;
+                                        if (functionInfo && varTypeTok && ((varTypeTok->isStandardType() && !Token::Match(varTypeTok, "float|double")) ||
+                                                                           Token::Match(varTypeTok->next(), "*|&") ||
+                                                                           (specifier[0] == 'l' && (!varTypeTok->isLong() || varTypeTok->str() != "double")) ||
+                                                                           (specifier[0] != 'l' && varTypeTok->isLong())))
                                             invalidPrintfArgTypeError_float(tok, numFormat, specifier);
-                                        } else if (argListTok->type() == Token::eString) {
-                                            specifier += *i;
+                                        else if (variableInfo && varTypeTok && ((isKnownType(variableInfo, varTypeTok) && !Token::Match(varTypeTok, "float|double")) || variableInfo->isPointer() || variableInfo->isArray()))
                                             invalidPrintfArgTypeError_float(tok, numFormat, specifier);
-                                        }
+                                        else if (argListTok->type() == Token::eString)
+                                            invalidPrintfArgTypeError_float(tok, numFormat, specifier);
                                         done = true;
                                         break;
                                     case 'h': // Can be 'hh' (signed char or unsigned char) or 'h' (short int or unsigned short int)
@@ -733,6 +755,59 @@ void CheckIO::checkWrongPrintfScanfArguments()
                 wrongPrintfScanfArgumentsError(tok, tok->str(), numFormat, numFunction);
         }
     }
+}
+
+// We currently only support string literals, variables, and functions.
+/// @todo add non-string literals, and generic expressions
+
+bool CheckIO::getArgumentInfo(const Token * tok, const Variable **var, const Token **typeTok, const Function **func) const
+{
+    if (tok) {
+        if (tok->type() == Token::eString) {
+            *var = 0;
+            *typeTok = 0;
+            *func = 0;
+            return true;
+        } else if (tok->type() == Token::eVariable || tok->type() == Token::eFunction || Token::Match(tok, "%type% ::")) {
+            while (Token::Match(tok, "%type% ::"))
+                tok = tok->tokAt(2);
+            if (!tok || !(tok->type() == Token::eVariable || tok->type() == Token::eFunction))
+                return false;
+            const Token *varTok = 0;
+            for (const Token *tok1 = tok->next(); tok1; tok1 = tok1->next()) {
+                if (tok1->str() == "," || tok1->str() == ")") {
+                    if (tok1->previous()->str() == "]")
+                        varTok = tok1->linkAt(-1)->previous();
+                    else if (tok1->previous()->str() == ")" && tok1->linkAt(-1)->previous()->type() == Token::eFunction) {
+                        const Function * function = tok1->linkAt(-1)->previous()->function();
+                        if (function) {
+                            *var = 0;
+                            *typeTok = function->retDef;
+                            *func = function;
+                            return true;
+                        }
+                    } else
+                        varTok = tok1->previous();
+                    break;
+                } else if (tok1->str() == "(" || tok1->str() == "{" || tok1->str() == "[")
+                    tok1 = tok1->link();
+                else if (tok1->str() == "<" && tok1->link())
+                    tok1 = tok1->link();
+                else if (!(tok1->str() == "." || tok1->type() == Token::eVariable || tok1->type() == Token::eFunction))
+                    return false;
+            }
+
+            if (varTok) {
+                const Variable *variableInfo = varTok->variable();
+                *var = variableInfo;
+                *typeTok = variableInfo ? variableInfo->typeStartToken() : NULL;
+                *func = 0;
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 void CheckIO::wrongPrintfScanfArgumentsError(const Token* tok,

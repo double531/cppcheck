@@ -26,7 +26,6 @@ HEADERS += $${BASEPATH}check.h \
            $${BASEPATH}checkpostfixoperator.h \
            $${BASEPATH}checksizeof.h \
            $${BASEPATH}checkstl.h \
-           $${BASEPATH}checkstyle.h \
            $${BASEPATH}checkuninitvar.h \
            $${BASEPATH}checkunusedfunctions.h \
            $${BASEPATH}checkunusedvar.h \
@@ -67,7 +66,6 @@ SOURCES += $${BASEPATH}check64bit.cpp \
            $${BASEPATH}checkpostfixoperator.cpp \
            $${BASEPATH}checksizeof.cpp \
            $${BASEPATH}checkstl.cpp \
-           $${BASEPATH}checkstyle.cpp \
            $${BASEPATH}checkuninitvar.cpp \
            $${BASEPATH}checkunusedfunctions.cpp \
            $${BASEPATH}checkunusedvar.cpp \

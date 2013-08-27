@@ -260,6 +260,110 @@ std::string Preprocessor::read(std::istream &istr, const std::string &filename)
     return result;
 }
 
+std::string Preprocessor::read(std::istream &istr, const std::string &filename, std::string& p_strRawCode)
+{
+    // The UTF-16 BOM is 0xfffe or 0xfeff.
+    unsigned int bom = 0;
+    if (istr.peek() >= 0xfe) {
+        bom = ((unsigned int)istr.get() << 8);
+        if (istr.peek() >= 0xfe)
+            bom |= (unsigned int)istr.get();
+    }
+
+    if (_settings && _settings->terminated())
+        return "";
+
+    // ------------------------------------------------------------------------------------------
+    //
+    // handling <backslash><newline>
+    // when this is encountered the <backslash><newline> will be "skipped".
+    // on the next <newline>, extra newlines will be added
+    std::ostringstream code;
+    unsigned int newlines = 0;
+    for (unsigned char ch = readChar(istr,bom); istr.good(); ch = readChar(istr,bom)) {
+        // Replace assorted special chars with spaces..
+        if (((ch & 0x80) == 0) && (ch != '\n') && (std::isspace(ch) || std::iscntrl(ch)))
+            ch = ' ';
+
+        // <backslash><newline>..
+        // for gcc-compatibility the trailing spaces should be ignored
+        // for vs-compatibility the trailing spaces should be kept
+        // See tickets #640 and #1869
+        // The solution for now is to have a compiler-dependent behaviour.
+        if (ch == '\\') {
+            unsigned char chNext;
+
+            std::string spaces;
+
+#ifdef __GNUC__
+            // gcc-compatibility: ignore spaces
+            for (;; spaces += ' ') {
+                chNext = (unsigned char)istr.peek();
+                if (chNext != '\n' && chNext != '\r' &&
+                    (std::isspace(chNext) || std::iscntrl(chNext))) {
+                    // Skip whitespace between <backslash> and <newline>
+                    (void)readChar(istr,bom);
+                    continue;
+                }
+
+                break;
+            }
+#else
+            // keep spaces
+            chNext = (unsigned char)istr.peek();
+#endif
+            if (chNext == '\n' || chNext == '\r') {
+                ++newlines;
+                (void)readChar(istr,bom);   // Skip the "<backslash><newline>"
+            } else {
+                code << "\\" << spaces;
+            }
+        } else {
+            code << char(ch);
+
+            // if there has been <backslash><newline> sequences, add extra newlines..
+            if (ch == '\n' && newlines > 0) {
+                code << std::string(newlines, '\n');
+                newlines = 0;
+            }
+        }
+    }
+    std::string result = code.str();
+    code.str("");
+
+    //ds get the raw code here
+    p_strRawCode = result;
+
+    // ------------------------------------------------------------------------------------------
+    //
+    // Remove all comments..
+    result = removeComments(result, filename);
+    if (_settings && _settings->terminated())
+        return "";
+
+    // ------------------------------------------------------------------------------------------
+    //
+    // Clean up all preprocessor statements
+    result = preprocessCleanupDirectives(result);
+    if (_settings && _settings->terminated())
+        return "";
+
+    // ------------------------------------------------------------------------------------------
+    //
+    // Clean up preprocessor #if statements with Parentheses
+    result = removeParentheses(result);
+    if (_settings && _settings->terminated())
+        return "";
+
+    // Remove '#if 0' blocks
+    if (result.find("#if 0\n") != std::string::npos)
+        result = removeIf0(result);
+    if (_settings && _settings->terminated())
+        return "";
+
+    return result;
+}
+
 std::string Preprocessor::preprocessCleanupDirectives(const std::string &processedFile)
 {
     std::ostringstream code;
@@ -341,7 +445,6 @@ std::string Preprocessor::preprocessCleanupDirectives(const std::string &process
     return code.str();
 }
 
-/*ds disabled at this point - we need the comments in the tokenlist.cpp
 static bool hasbom(const std::string &str)
 {
     return bool(str.size() >= 3 &&
@@ -349,7 +452,7 @@ static bool hasbom(const std::string &str)
                 static_cast<unsigned char>(str[1]) == 0xbb &&
                 static_cast<unsigned char>(str[2]) == 0xbf);
 }
-*/
+
 
 // This wrapper exists because Sun's CC does not allow a static_cast
 // from extern "C" int(*)(int) to int(*)(int).
@@ -358,7 +461,7 @@ static int tolowerWrapper(int c)
     return std::tolower(c);
 }
 
-/*ds disabled at this point - we need the comments in the tokenlist.cpp
+
 static bool isFallThroughComment(std::string comment)
 {
     // convert comment to lower case without whitespace
@@ -378,12 +481,9 @@ static bool isFallThroughComment(std::string comment)
            comment.find("nobreak") != std::string::npos ||
            comment == "fall";
 }
-*/
 
 std::string Preprocessor::removeComments(const std::string &str, const std::string &filename)
 {
-    /*ds disabled at this point - we need the comments in the tokenlist.cpp
-
     // For the error report
     unsigned int lineno = 1;
 
@@ -643,10 +743,7 @@ std::string Preprocessor::removeComments(const std::string &str, const std::stri
         }
     }
 
-    return code.str();*/
-
-    //ds return same string as given
-    return str;
+    return code.str();
 }
 
 std::string Preprocessor::removeIf0(const std::string &code)
@@ -949,7 +1046,109 @@ void Preprocessor::preprocess(std::istream &srcCodeStream, std::string &processe
     std::map<std::string, std::string> defs(getcfgmap(_settings ? _settings->userDefines : std::string("")));
 
     if (_settings && _settings->_maxConfigs == 1U) {
-        processedFile = handleIncludes(processedFile, filename, includePaths, defs);
+        std::list<std::string> pragmaOnce;
+        std::list<std::string> includes;
+        processedFile = handleIncludes(processedFile, filename, includePaths, defs, pragmaOnce, includes);
+        resultConfigurations = getcfgs(processedFile, filename, defs);
+    } else {
+        handleIncludes(processedFile, filename, includePaths);
+
+        processedFile = replaceIfDefined(processedFile);
+
+        // Get all possible configurations..
+        resultConfigurations = getcfgs(processedFile, filename, defs);
+
+        // Remove configurations that are disabled by -U
+        handleUndef(resultConfigurations);
+    }
+}
+
+void Preprocessor::preprocess(std::istream &srcCodeStream, std::string &processedFile, std::string& p_strRawCode, std::list<std::string> &resultConfigurations, const std::string &filename, const std::list<std::string> &includePaths)
+{
+    std::string forcedIncludes;
+
+    if (file0.empty())
+        file0 = filename;
+
+    //ds call the overloaded read function to get the raw code
+    processedFile = read(srcCodeStream, filename, p_strRawCode);
+
+    if (_settings) {
+        for (std::list<std::string>::iterator it = _settings->userIncludes.begin();
+             it != _settings->userIncludes.end();
+             ++it) {
+            std::string cur = *it;
+
+            // try to open file
+            std::ifstream fin;
+
+            fin.open(cur.c_str());
+            if (!fin.is_open()) {
+                missingInclude(cur,
+                               1,
+                               cur,
+                               UserHeader
+                              );
+                continue;
+            }
+            const std::string fileData = read(fin, filename);
+
+            fin.close();
+
+            forcedIncludes =
+                forcedIncludes +
+                "#file \"" + cur + "\"\n" +
+                "#line 1\n" +
+                fileData + "\n" +
+                "#endfile\n"
+                ;
+        }
+    }
+
+    if (!forcedIncludes.empty()) {
+        processedFile =
+            forcedIncludes +
+            "#file \"" + filename + "\"\n" +
+            "#line 1\n" +
+            processedFile +
+            "#endfile\n"
+            ;
+    }
+
+    // Remove asm(...)
+    removeAsm(processedFile);
+
+    // Replace "defined A" with "defined(A)"
+    {
+        std::istringstream istr(processedFile);
+        std::ostringstream ostr;
+        std::string line;
+        while (std::getline(istr, line)) {
+            if (line.compare(0, 4, "#if ") == 0 || line.compare(0, 6, "#elif ") == 0) {
+                std::string::size_type pos = 0;
+                while ((pos = line.find(" defined ")) != std::string::npos) {
+                    line[pos+8] = '(';
+                    pos = line.find_first_of(" |&", pos + 8);
+                    if (pos == std::string::npos)
+                        line += ")";
+                    else
+                        line.insert(pos, ")");
+
+                    if (_settings && _settings->terminated())
+                        return;
+                }
+            }
+            ostr << line << "\n";
+        }
+        processedFile = ostr.str();
+    }
+
+    std::map<std::string, std::string> defs(getcfgmap(_settings ? _settings->userDefines : std::string("")));
+
+    if (_settings && _settings->_maxConfigs == 1U) {
+        std::list<std::string> pragmaOnce;
+        std::list<std::string> includes;
+        processedFile = handleIncludes(processedFile, filename, includePaths, defs, pragmaOnce, includes);
         resultConfigurations = getcfgs(processedFile, filename, defs);
     } else {
         handleIncludes(processedFile, filename, includePaths);
@@ -1939,7 +2138,7 @@ static bool openHeader(std::string &filename, const std::list<std::string> &incl
 }
 
 
-std::string Preprocessor::handleIncludes(const std::string &code, const std::string &filePath, const std::list<std::string> &includePaths, std::map<std::string,std::string> &defs, std::list<std::string> includes)
+std::string Preprocessor::handleIncludes(const std::string &code, const std::string &filePath, const std::list<std::string> &includePaths, std::map<std::string,std::string> &defs, std::list<std::string> &pragmaOnce, std::list<std::string> includes)
 {
     const std::string path(filePath.substr(0, 1 + filePath.find_last_of("\\/")));
 
@@ -1982,7 +2181,9 @@ std::string Preprocessor::handleIncludes(const std::string &code, const std::str
 
         std::stack<bool>::reference elseIsTrue = elseIsTrueStack.top();
 
-        if (line.compare(0,7,"#ifdef ") == 0) {
+        if (line == "#pragma once") {
+            pragmaOnce.push_back(filePath);
+        } else if (line.compare(0,7,"#ifdef ") == 0) {
             if (indent == indentmatch) {
                 const std::string tag = getdef(line,true);
                 if (defs.find(tag) != defs.end()) {
@@ -2122,8 +2323,14 @@ std::string Preprocessor::handleIncludes(const std::string &code, const std::str
 
                 includes.push_back(filename);
 
+                // Don't include header if it's already included and contains #pragma once
+                if (std::find(pragmaOnce.begin(), pragmaOnce.end(), filename) != pragmaOnce.end()) {
+                    ostr << std::endl;
+                    continue;
+                }
+
                 ostr << "#file \"" << filename << "\"\n"
-                     << handleIncludes(read(fin, filename), filename, includePaths, defs, includes) << std::endl
+                     << handleIncludes(read(fin, filename), filename, includePaths, defs, pragmaOnce, includes) << std::endl
                      << "#endfile\n";
                 continue;
             }

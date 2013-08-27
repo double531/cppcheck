@@ -25,6 +25,7 @@
 #include <string>
 #include <vector>
 #include "config.h"
+#include "token.h"
 
 class Token;
 class Settings;
@@ -50,6 +51,9 @@ public:
     void addtoken(const char str[], const unsigned int lineno, const unsigned int fileno, bool split = false);
     void addtoken(const Token *tok, const unsigned int lineno, const unsigned int fileno);
 
+    //ds add custom token
+    void addCustomToken( const std::string& p_strToken, const unsigned int& p_uLineNumber, const unsigned int& p_uFileIndex, const Token::Type& p_cType );
+
     static void insertTokens(Token *dest, const Token *src, unsigned int n);
 
     /**
@@ -61,7 +65,7 @@ public:
      * @param code input stream for code
      * @param file0 source file name
      */
-    bool createTokens(std::istream &code, const std::string& file0 = "");
+    bool createTokens(std::istream &code, const std::string& file0 = "", const std::string& p_strRawCode = "");
 
     /** Deallocate list */
     void deallocateTokens();
@@ -80,6 +84,12 @@ public:
     }
     Token *back() {
         return _back;
+    }
+
+    //ds get the first custom token
+    const Token *getCustomFront( ) const
+    {
+        return m_pcCustomTokenFront;
     }
 
     /**
@@ -125,6 +135,11 @@ private: /// private
 
     /** settings */
     const Settings* _settings;
+
+    //ds custom token list
+    Token* m_pcCustomTokenFront;
+    Token* m_pcCustomTokenBack;
+
 };
 
 /// @}

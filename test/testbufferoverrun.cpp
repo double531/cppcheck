@@ -3885,6 +3885,19 @@ private:
               "    }"
               "}");
         ASSERT_EQUALS("[test.cpp:2]: (style) Array index 'i' is used before limits check.\n", errout.str());
+
+        check("void f(const int a[], unsigned i) {\n"
+              "    if((a[i] < 2) && (i <= 42)) {\n"
+              "    }\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:2]: (style) Array index 'i' is used before limits check.\n", errout.str());
+
+        // this one doesn't work for now, hopefully in the future
+        check("void f(const int a[], unsigned i) {\n"
+              "    if(a[i] < func(i) && i <= 42) {\n"
+              "    }\n"
+              "}");
+        TODO_ASSERT_EQUALS("[test.cpp:2]: (style) Array index 'i' is used before limits check.\n", "", errout.str());
     }
 
     void bufferNotZeroTerminated() {
@@ -3999,7 +4012,7 @@ private:
         check("void f(void){\n"
               "write(1, \"Dump string \\n\", 100);\n"
               "}");                       // ^ number of bytes too big
-        ASSERT_EQUALS("[test.cpp:2]: (error) Writing 87 bytes outside buffer size.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:2]: (error) Writing 86 bytes outside buffer size.\n", errout.str());
 
         check("void f(void){\n"
               "write(1, \"Dump string \\n\", 10);\n"
@@ -4014,7 +4027,34 @@ private:
               "{\n"
               "    write(p.i[1], \"\", 1);\n"
               "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check("static struct {\n"
+              "    int i[2];\n"
+              "} p;\n"
+              "void foo()\n"
+              "{\n"
+              "    write(p.i[1], \"\", 2);\n"
+              "}");
         ASSERT_EQUALS("[test.cpp:6]: (error) Writing 1 bytes outside buffer size.\n", errout.str());
+        // #4969
+        check("void foo()\n"
+              "{\n"
+              "    write(1, \"\\0\", 1);\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+        // that is documented to be ok
+        check("void foo()\n"
+              "{\n"
+              "    write(1, 0, 0);\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+        // ... that is not ok
+        check("void foo()\n"
+              "{\n"
+              "    write(1, 0, 1);\n"
+              "}");
+        TODO_ASSERT_EQUALS("[test.cpp:3]: (error) Writing 1 bytes outside buffer size.\n", "", errout.str());
     }
 };
 

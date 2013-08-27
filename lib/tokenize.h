@@ -88,7 +88,8 @@ public:
      */
     bool tokenize(std::istream &code,
                   const char FileName[],
-                  const std::string &configuration = "");
+                  const std::string &configuration = "",
+                  const std::string& p_strRawCode = "");
 
     /**
      * tokenize condition and run simple simplifications on it
@@ -739,6 +740,15 @@ public:
         return list.front();
     }
 
+    //ds custom token token list
+    TokenList m_lstCustomTokenList;
+
+    //ds getter for the custom token list
+    const Token* getCustomTokenListFront( ) const
+    {
+        return m_lstCustomTokenList.front( );
+    }
+
     /**
      * Copy tokens.
      * @param dest destination token where copied tokens will be inserted after
@@ -785,6 +795,7 @@ private:
      * TimerResults
      */
     TimerResults *m_timerResults;
+
 };
 
 /// @}

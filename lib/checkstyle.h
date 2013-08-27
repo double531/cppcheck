@@ -92,14 +92,14 @@ private:
 
     //ds check all tokens in one run (only one function for variables and functions for higher efficiency since we only have to loop once through all tokens)
     void checkComplete( );
-    void checkCompleteError( const Token* p_Token, const std::string p_strErrorInformation, const Severity::SeverityType p_cSeverity );
+    void checkCompleteError( const Token* p_Token, const std::string& p_strErrorInformation, const Severity::SeverityType& p_cSeverity );
 
 //ds helpers
 private:
 
     //ds prefix checking for variables and functions
-    void checkPrefixFunction( const Token* p_pcToken, const Function* p_pcFunction, const std::string p_strFunctionScopePrefix = "function" );
-    void checkPrefixVariable( const Token* p_pcToken, const Variable* p_pcVariable, const std::string p_strVariableScopePrefix = "variable" );
+    void checkPrefixFunction( const Token* p_pcToken, const Function* p_pcFunction, const std::string& p_strFunctionScopePrefix = "function" );
+    void checkPrefixVariable( const Token* p_pcToken, const Variable* p_pcVariable, const std::string& p_strVariableScopePrefix = "variable" );
 
     //ds check assertions, comments and boost pointer arguments
     void checkAssert( const Token* p_pcToken );
@@ -107,17 +107,17 @@ private:
     void checkBoostPointer( const Token* p_pcToken );
 
     //ds identify boost::shared_ptrs and arrays
-    bool _isBoostPointer( const std::string strTypeName ) const;
-    bool _isBoostArray( const std::string strTypeName ) const;
+    bool _isBoostPointer( const std::string& p_strTypeName ) const;
+    bool _isBoostArray( const std::string& p_strTypeName ) const;
 
     //ds retrieves the complete variable type consisting of multiple tokens (e.g std::string)
     const std::string _getVariableType( const Variable* p_pcVariable ) const;
 
     //ds returns a completely filtered version of the variable type (without *'s and &'s and namespaces)
-    const std::string _filterVariableTypeComplete( const std::string p_strType ) const;
+    const std::string _filterVariableTypeComplete( const std::string& p_strType ) const;
 
     //ds returns a filtered version of the variable type (without *'s and &'s)
-    const std::string _filterVariableTypeKeepNamespace( const std::string p_strType ) const;
+    const std::string _filterVariableTypeKeepNamespace( const std::string& p_strType ) const;
 
     //ds check vectors (overloaded for easy readability)
     bool _isChecked( const Function* p_cFunction ) const;

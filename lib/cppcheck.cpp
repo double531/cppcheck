@@ -40,7 +40,7 @@ static const char ExtraVersion[] = "";
 static TimerResults S_timerResults;
 
 CppCheck::CppCheck(ErrorLogger &errorLogger, bool useGlobalSuppressions)
-    : _errorLogger(errorLogger), exitcode(0), _useGlobalSuppressions(useGlobalSuppressions), tooManyConfigs(false), _simplify(true)
+    : _errorLogger(errorLogger), exitcode(0), _useGlobalSuppressions(useGlobalSuppressions), tooManyConfigs(false), _simplify(true), m_strRawCode( "" )
 {
 }
 
@@ -154,12 +154,12 @@ unsigned int CppCheck::processFile(const std::string& filename)
         if (!_fileContent.empty()) {
             // File content was given as a string
             std::istringstream iss(_fileContent);
-            preprocessor.preprocess(iss, filedata, configurations, filename, _settings._includePaths);
+            preprocessor.preprocess(iss, filedata, m_strRawCode, configurations, filename, _settings._includePaths);
         } else {
             // Only file name was given, read the content from file
             std::ifstream fin(filename.c_str());
             Timer t("Preprocessor::preprocess", _settings._showtime, &S_timerResults);
-            preprocessor.preprocess(fin, filedata, configurations, filename, _settings._includePaths);
+            preprocessor.preprocess(fin, filedata, m_strRawCode, configurations, filename, _settings._includePaths);
         }
 
         // Run rules on this code
@@ -300,8 +300,6 @@ void CppCheck::analyseFile(std::istream &fin, const std::string &filename)
     preprocessor.preprocess(fin, filedata, configurations, filename, _settings._includePaths);
     const std::string code = preprocessor.getcode(filedata, "", filename);
 
-    //ds
-
     if (_settings.checkConfiguration) {
         return;
     }
@@ -356,7 +354,10 @@ void CppCheck::checkFile(const std::string &code, const char FileName[])
         std::istringstream istr(code);
 
         Timer timer("Tokenizer::tokenize", _settings._showtime, &S_timerResults);
-        result = _tokenizer.tokenize(istr, FileName, cfg);
+
+        //ds add the raw code to the tokenizer
+        result = _tokenizer.tokenize(istr, FileName, cfg, m_strRawCode);
+
         timer.Stop();
         if (!result) {
             // File had syntax errors, abort
