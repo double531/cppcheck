@@ -95,8 +95,8 @@ public:
     /** Just read the code into a string. Perform simple cleanup of the code */
     std::string read(std::istream &istr, const std::string &filename);
 
-    //ds overloaded for raw code transmission if desired
-    std::string read(std::istream &istr, const std::string &filename, std::string& p_strRawCode);
+    //ds overloaded the regular read function to also return the raw code (in C style manner.. )
+    std::string read( std::istream &istr, const std::string &filename, std::string& p_strRawCode );
 
     /**
      * Get preprocessed code for a given configuration
@@ -244,6 +244,8 @@ public:
      * \return resulting string
      */
     std::string handleIncludes(const std::string &code, const std::string &filePath, const std::list<std::string> &includePaths, std::map<std::string,std::string> &defs, std::list<std::string> &pragmaOnce, std::list<std::string> includes);
+
+    std::string handleIncludesRaw(const std::string &code, const std::string &filePath, const std::list<std::string> &includePaths, std::map<std::string,std::string> &defs, std::list<std::string> &pragmaOnce, std::list<std::string> includes);
 
     void setFile0(const std::string &f) {
         file0 = f;

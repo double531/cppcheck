@@ -64,7 +64,7 @@ CCheckStyle::CCheckStyle( const Tokenizer* p_Tokenizer, const Settings* p_Settin
     m_mapWhitelist[ "TPath" ]         = "pth"; //12
     m_mapWhitelist[ "unsigned int" ]  = "u";   //13
     m_mapWhitelist[ "string" ]        = "str"; //14
-    m_mapWhitelist[ "std::string" ]   = "str"; //14.1
+    m_mapWhitelist[ "std::string" ]   = "str"; //14
     m_mapWhitelist[ "TString" ]       = "str"; //15
     m_mapWhitelist[ "type" ]          = "t";   //16
     m_mapWhitelist[ "TTime" ]         = "tm";  //17
@@ -72,14 +72,22 @@ CCheckStyle::CCheckStyle( const Tokenizer* p_Tokenizer, const Settings* p_Settin
     m_mapWhitelist[ "pointer" ]       = "p";   //19
 
     //ds containers
-    m_mapWhitelist[ "vector" ]   = "vec";  //20
-    m_mapWhitelist[ "map" ]      = "map";  //21
-    m_mapWhitelist[ "multimap" ] = "mmap"; //22
-    m_mapWhitelist[ "list" ]     = "lst";  //23
-    m_mapWhitelist[ "pair" ]     = "pr";   //24
-    m_mapWhitelist[ "set" ]      = "set";  //25
-    m_mapWhitelist[ "tuple" ]    = "tpl";  //26
-    m_mapWhitelist[ "iterator" ] = "it";   //26.1
+    m_mapWhitelist[ "vector" ]        = "vec";  //20
+    m_mapWhitelist[ "map" ]           = "map";  //21
+    m_mapWhitelist[ "multimap" ]      = "mmap"; //22
+    m_mapWhitelist[ "list" ]          = "lst";  //23
+    m_mapWhitelist[ "pair" ]          = "pr";   //24
+    m_mapWhitelist[ "set" ]           = "set";  //25
+    m_mapWhitelist[ "tuple" ]         = "tpl";  //26
+    m_mapWhitelist[ "iterator" ]      = "it";   //26.1
+    m_mapWhitelist[ "std::vector" ]   = "vec";  //20
+    m_mapWhitelist[ "std::map" ]      = "map";  //21
+    m_mapWhitelist[ "std::multimap" ] = "mmap"; //22
+    m_mapWhitelist[ "std::list" ]     = "lst";  //23
+    m_mapWhitelist[ "std::pair" ]     = "pr";   //24
+    m_mapWhitelist[ "std::set" ]      = "set";  //25
+    m_mapWhitelist[ "std::tuple" ]    = "tpl";  //26
+    m_mapWhitelist[ "std::iterator" ] = "it";   //26.1
 
     //ds custom
     m_mapWhitelist[ "array" ]              = "arr"; //27
@@ -196,14 +204,36 @@ void CCheckStyle::checkComplete( )
         //ds always check for asserts (not considered real functions)
         else if( "assert" == pcCurrent->str( ) )
         {
+            //ds get the link start (better readability)
+            const Token* pcTokenLinkStart( pcCurrent->next( ) );
+
             //ds make sure we really caught an assert by checking the brackets
-            if( 0 != pcCurrent->next( ) && "(" == pcCurrent->next( )->str( ) )
+            if( 0 != pcTokenLinkStart && "(" == pcTokenLinkStart->str( ) )
             {
                 //ds check if it is linked
-                if( 0 != pcCurrent->next( )->link( ) )
+                const Token* pcTokenLinkEnd( pcTokenLinkStart->link( ) );
+
+                //ds if it worked
+                if( 0 != pcTokenLinkEnd )
                 {
                     //ds call the check procedure
-                    checkAssert( pcCurrent );
+                    checkAssert( pcTokenLinkStart, pcTokenLinkEnd );
+                }
+                else
+                {
+                    //ds sometimes the link call does not work, we have to search for the ( manually TODO implement safer link search
+                    pcTokenLinkEnd = _getLink( pcTokenLinkStart );
+
+                    //ds if we got a link end
+                    if( 0 != pcTokenLinkEnd )
+                    {
+                        //ds call the check procedure
+                        checkAssert( pcTokenLinkStart, pcTokenLinkEnd );
+                    }
+                    else
+                    {
+                        //ds not a real assert statement (should not happen) TODO throw
+                    }
                 }
             }
         }
@@ -338,14 +368,14 @@ void CCheckStyle::checkPrefixVariable( const Token* p_pcToken, const Variable* p
             if( true == p_pcVariable->isClass( ) )
             {
                 //ds inform user
-                checkCompleteError( p_pcToken, "forbidden use of pointer for class: " + strTypeName + " " + p_pcVariable->name( ) + " - please use: boost::shared_ptr< " + _filterVariableTypeKeepNamespace( strTypeName ) + " >", Severity::style );
+                checkCompleteError( p_pcToken, "forbidden use of pointer for class: " + strTypeName + " " + p_pcVariable->name( ) + " - please use: boost::shared_ptr< " + _filterVariableTypeSimple( strTypeName ) + " >", Severity::style );
             }
 
             //ds case for types entered in the whitelist but not detected as classes
             if( false == p_pcVariable->typeStartToken( )->isStandardType( ) )
             {
                 //ds inform user
-                checkCompleteError( p_pcToken, "forbidden use of pointer for class: " + strTypeName + " " + p_pcVariable->name( ) + " - please use: boost::shared_ptr< " + _filterVariableTypeKeepNamespace( strTypeName ) + " >", Severity::style );
+                checkCompleteError( p_pcToken, "forbidden use of pointer for class: " + strTypeName + " " + p_pcVariable->name( ) + " - please use: boost::shared_ptr< " + _filterVariableTypeSimple( strTypeName ) + " >", Severity::style );
             }
         }
 
@@ -409,23 +439,23 @@ void CCheckStyle::checkPrefixVariable( const Token* p_pcToken, const Variable* p
     }
 }
 
-void CCheckStyle::checkAssert( const Token* p_pcToken )
+void CCheckStyle::checkAssert( const Token* p_pcTokenStart, const Token* p_pcTokenEnd )
 {
     //ds check input
-    if( 0 == p_pcToken )
+    if( 0 == p_pcTokenStart || 0 == p_pcTokenEnd )
     {
         //ds invalid call (TODO throw)
-        std::cout << "<CCheckStyle>[checkAssertion] error: received null pointer Token" << std::endl;
+        std::cout << "<CCheckStyle>[checkAssert] error: received null pointer Token" << std::endl;
 
         //ds skip
         return;
     }
 
     //ds check if a bracket follows the token, checkAssertion must be called from the "assert" Token so a "(" Token has to follow
-    if( "(" != p_pcToken->next( )->str( ) )
+    if( "(" != p_pcTokenStart->str( ) || ")" != p_pcTokenEnd->str( ) )
     {
         //ds invalid call (TODO throw)
-        std::cout << "<CCheckStyle>[checkAssertion] error: invalid function call" << std::endl;
+        std::cout << "<CCheckStyle>[checkAssert] error: invalid function call" << std::endl;
 
         //ds skip
         return;
@@ -435,7 +465,7 @@ void CCheckStyle::checkAssert( const Token* p_pcToken )
     std::string strAssertStatement( "" );
 
     //ds get the complete statement here because the next loop breaks when an error is found
-    for( const Token* itToken = p_pcToken->next( )->next( ); itToken != p_pcToken->next( )->link( ); itToken = itToken->next( ) )
+    for( const Token* itToken = p_pcTokenStart->next( ); itToken != p_pcTokenEnd; itToken = itToken->next( ) )
     {
         //ds add all characters with a space
         strAssertStatement += itToken->str( );
@@ -443,20 +473,27 @@ void CCheckStyle::checkAssert( const Token* p_pcToken )
     }
 
     //ds check all arguments between the two links of the assert call
-    for( const Token* itToken = p_pcToken->next( )->next( ); itToken != p_pcToken->next( )->link( ); itToken = itToken->next( ) )
+    for( const Token* itToken = p_pcTokenStart->next( ); itToken != p_pcTokenEnd; itToken = itToken->next( ) )
     {
         //ds no increment/decrement operations allowed
         if( "++" == itToken->str( ) || "--" == itToken->str( ) )
         {
             //ds trigger error message
-            checkCompleteError( p_pcToken, "assert statement: assert( " + strAssertStatement + ") includes forbidden operation: " + itToken->str( ), Severity::style );
+            checkCompleteError( p_pcTokenStart, "assert statement: assert( " + strAssertStatement + ") includes forbidden operation: " + itToken->str( ), Severity::style );
         }
 
         //ds no function calls allowed
         if( Token::eFunction == itToken->type( ) )
         {
             //ds trigger error message
-            checkCompleteError( p_pcToken, "assert statement: assert( " + strAssertStatement + ") includes forbidden function call: " + itToken->str( ) + "( )", Severity::style );
+            checkCompleteError( p_pcTokenStart, "assert statement: assert( " + strAssertStatement + ") includes forbidden function call: " + itToken->str( ) + "( )", Severity::style );
+        }
+
+        //ds in case cppcheck does not recognize a function in the statement we reject any ( ) operation
+        if( "(" == itToken->str( ) )
+        {
+            //ds trigger error message
+            checkCompleteError( p_pcTokenStart, "assert statement: assert( " + strAssertStatement + ") includes forbidden function call: " + itToken->previous( )->str( ) + "( )", Severity::style );
         }
     }
 }
@@ -497,8 +534,8 @@ void CCheckStyle::checkComment( const Token* p_pcToken )
         //ds //x or //xx or //xxx..
         else
         {
-            //ds there must be a space after the second initial
-            if( 5 <= strComment.length( ) && " " != strComment.substr( 4, 1 ) )
+            //ds there must be a space after the second initial but no space after the first
+            if( 5 <= strComment.length( ) && ( " " != strComment.substr( 4, 1 ) || " " == strComment.substr( 3, 1 ) ) )
             {
                 checkCompleteError( p_pcToken, "single-line comment: \"" + strComment + "\" has invalid format - correct: \"//xx ...\"", Severity::style );
             }
@@ -513,6 +550,8 @@ void CCheckStyle::checkComment( const Token* p_pcToken )
         {
             checkCompleteError( p_pcToken, "multi-line comment: \"" + strComment + "\" has invalid format - correct: \"/** ...\"", Severity::style );
         }
+
+        //ds TODO implemented further checks
     }
 }
 
@@ -527,11 +566,12 @@ void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
     const std::string strPointerName( p_pcToken->str( ) );
 
     //ds get the end of the type definition
-    const Token* pcEndToken( p_pcToken->findsimplematch( p_pcToken, ";" ) );
+    const Token* pcEndToken( p_pcToken->findmatch( p_pcToken, ";" ) );
 
     //ds escape if no end was found
     if( 0 == pcEndToken )
     {
+        //ds TODO throw - fatal
         return;
     }
 
@@ -544,24 +584,14 @@ void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
         //ds determine which configuration we have - first case: boost::shared_ptr< char > pPointer1( new char[10] )
         if( ")" == pcEndToken->previous( )->str( ) )
         {
-            //ds get the link
-            const Token* pcTokenLink( pcEndToken->previous( ) );
+            //ds get the link start
+            const Token* pcTokenLinkStart( _getLinkInverse( pcEndToken->previous( ) ) );
 
-            if( 0 != pcTokenLink->link( ) )
-            {
-                pcTokenLink = pcTokenLink->link( )->previous( );
-            }
-            else
-            {
-                //ds TODO throw - fatal
-                return;
-            }
-
-            //ds the end token does not have to be shifted
-            if( 0 != pcTokenLink )
+            //ds the variable name has to be the previous token
+            if( 0 != pcTokenLinkStart && pcTokenLinkStart->previous( ) )
             {
                 //ds we can directly get the pointers name
-                strVariableName = pcTokenLink->str( );
+                strVariableName = pcTokenLinkStart->previous( )->str( );
             }
             else
             {
@@ -572,20 +602,25 @@ void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
         else
         {
             //ds the pointers name must be right before the first ;
-            strVariableName = pcEndToken->previous( )->str( );
-
-            //ds there is a second definition - shift the end token
-            pcEndToken = pcEndToken->next( );
-
-            //ds if we could shift
-            if( 0 != pcEndToken )
+            if(  true == pcEndToken->previous( )->isName( ) )
             {
-                pcEndToken = pcEndToken->findsimplematch( pcEndToken, ";" );
-            }
-            else
-            {
-                //ds TODO throw - fatal
-                return;
+                //ds get the name
+                strVariableName = pcEndToken->previous( )->str( );
+
+                //ds there is a second semicolon - shift the end token
+                pcEndToken = pcEndToken->next( );
+
+                //ds if we could shift
+                if( 0 != pcEndToken )
+                {
+                    //ds look for the final semicolon
+                    pcEndToken = pcEndToken->findmatch( pcEndToken, ";" );
+                }
+                else
+                {
+                    //ds TODO throw - fatal
+                    return;
+                }
             }
         }
     }
@@ -594,7 +629,7 @@ void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
     std::string strTypeName( "" );
 
     //ds bracket counter in order to recursive information
-    unsigned int uOpenBrackets( 0 );
+    int iOpenBrackets( 0 );
 
     //ds check if new call was found
     bool bIsNewCallFound( false );
@@ -608,19 +643,19 @@ void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
             //ds check if an opening bracket is found
             if( "<" == itToken->str( ) )
             {
-                ++uOpenBrackets;
-
-                //ds go on
-                continue;
+                ++iOpenBrackets;
             }
 
             //ds check if a closing bracket is found
             if( ">" == itToken->str( ) )
             {
-                --uOpenBrackets;
+                --iOpenBrackets;
+            }
 
-                //ds go on
-                continue;
+            //ds as long as there are open brackets record the information in between
+            if( 0 != iOpenBrackets )
+            {
+                strTypeName += itToken->str( );
             }
 
             //ds look for a new call (this is no violation yet)
@@ -629,23 +664,41 @@ void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
                 bIsNewCallFound = true;
             }
 
-            //ds as long as there are open brackets record the information in between
-            if( 0 != uOpenBrackets )
-            {
-                strTypeName += itToken->str( );
-            }
-
             //ds escape if we reach a function or parameter end
             if( ")" == itToken->str( ) )
             {
                 return;
             }
 
-            //ds once the new call is found a following array opener [ is fatal
+            //ds once the new call is found a following array opener [
             if( true == bIsNewCallFound && "[" == itToken->str( ) )
             {
-                //ds trigger error message
-                checkCompleteError( p_pcToken, "forbidden array initialization of class: boost::" + strPointerName + "< " + strTypeName + " > " + strVariableName + " - please use: boost::shared_array< " + strTypeName  + " >", Severity::style );
+                std::string strNewTypeName( "" );
+
+                //ds loop backwards to get the name (TODO there should be a smarter way to get the type, since we detect the "new" Token before)
+                for( const Token* pcInnerToken = itToken->previous( ); 0 != pcInnerToken; pcInnerToken = pcInnerToken->previous( ) )
+                {
+                    //ds break if we land at the new operator
+                    if( "new" == pcInnerToken->str( ) )
+                    {
+                        break;
+                    }
+
+                    //ds add up all characters until the new operator is hit
+                    strNewTypeName += pcInnerToken->str( );
+                }
+
+                //ds check if the token before the '[' matches the template given to the boost pointer
+                if( strTypeName == strNewTypeName )
+                {
+                    //ds trigger error message
+                    checkCompleteError( p_pcToken, "forbidden array initialization of class: boost::" + strPointerName + "< " + strTypeName + " > " + strVariableName + " - please use: boost::shared_array< " + strTypeName  + " >", Severity::style );
+                }
+                else
+                {
+                    //ds trigger error message - this should not happen if the code compiles
+                    checkCompleteError( p_pcToken, "invalid array initialization of class: boost::" + strPointerName + "< " + strTypeName + " > " + strVariableName + " with new < " + strNewTypeName + " > make sure the same type is used for the array allocation", Severity::style );
+                }
             }
         }
     }
@@ -718,7 +771,7 @@ const std::string CCheckStyle::_getVariableType( const Variable* p_pcVariable ) 
     //ds buffer for the type
     std::string strType( "" );
 
-    //ds check if we got an unsigned type (always has to be the first token)
+    //ds check if we got an unsigned type (always has to be the first token) - cppcheck cuts the const specifier out too but we don't have to check for that
     if( true == p_pcVariable->typeStartToken( )->isUnsigned( ) )
     {
         //ds add prefix
@@ -747,53 +800,29 @@ const std::string CCheckStyle::_getVariableType( const Variable* p_pcVariable ) 
 
 const std::string CCheckStyle::_filterVariableTypeComplete( const std::string& p_strType ) const
 {
-    std::string strTypeFiltered( "" );
+    //ds final string to return - filter already some characters out
+    std::string strTypeFiltered( _filterVariableTypeSimple( p_strType ) );
 
     //ds check for a template inside of the type
-    const long unsigned int uStartTemplate( p_strType.find( '<' ) );
+    const unsigned int uStartTemplate( static_cast< unsigned int >( p_strType.find( '<' ) ) );
 
     //ds get the container type if present
-    if( std::string::npos != uStartTemplate )
+    if( static_cast< unsigned int >( std::string::npos ) != uStartTemplate )
     {
-        //ds first check if an iterator is present (since it overwrites all prefixes)
+        //ds first check if an iterator is present (since it overwrites all prefixes -> std::map< etc >::iterator is always iterator for the whitelist)
         if( "iterator" == p_strType.substr( p_strType.length( ) - 8, 8 ) )
         {
             //ds always iterator
             strTypeFiltered = "iterator";
         }
-        else
-        {
-            //ds check for the namespace
-            if( "std::" == p_strType.substr( 0, 5 ) )
-            {
-                //ds only get the type of the container right after the namespace
-                strTypeFiltered = p_strType.substr( 5, uStartTemplate - 5 );
-            }
-            else
-            {
-                //ds no namespace to consider
-                strTypeFiltered = p_strType.substr( 0, uStartTemplate );
-            }
-        }
-    }
-    else
-    {
-        //ds loop through the whole string and remove *'s and &'s
-        for( std::string::const_iterator itString = p_strType.begin( ); itString != p_strType.end( ); ++itString )
-        {
-            //ds only add nonillegal characters
-            if( '*' != *itString && '&' != *itString )
-            {
-                //ds build the filtered string
-                strTypeFiltered += *itString;
-            }
-        }
+
+        //ds TODO implement more filtering based on the whitelist
     }
 
     return strTypeFiltered;
 }
 
-const std::string CCheckStyle::_filterVariableTypeKeepNamespace( const std::string& p_strType ) const
+const std::string CCheckStyle::_filterVariableTypeSimple( const std::string& p_strType ) const
 {
     std::string strTypeFiltered( "" );
 
@@ -809,6 +838,90 @@ const std::string CCheckStyle::_filterVariableTypeKeepNamespace( const std::stri
     }
 
     return strTypeFiltered;
+}
+
+const Token* CCheckStyle::_getLink( const Token* p_pcTokenStart ) const
+{
+    //ds characters to check
+    const std::string strCharacterStart( p_pcTokenStart->str( ) );
+    std::string strCharacterEnd( "" );
+
+    //ds get the correct character for the input
+    if( "(" == strCharacterStart ){ strCharacterEnd = ")"; }
+    else if( "<" == strCharacterStart ){ strCharacterEnd = ">"; }
+    else if( "{" == strCharacterStart ){ strCharacterEnd = "}"; }
+    else if( "[" == strCharacterStart ){ strCharacterEnd = "]"; }
+
+    //ds bracket counter in order to recursive information
+    int iOpenBrackets( 0 );
+
+    //ds start looping
+    for( const Token* pcToken = p_pcTokenStart; 0 != pcToken; pcToken = pcToken->next( ) )
+    {
+        //ds check if an opening bracket is found
+        if( strCharacterStart == pcToken->str( ) )
+        {
+            ++iOpenBrackets;
+        }
+
+        //ds check if a closing bracket is found
+        else if( strCharacterEnd == pcToken->str( ) )
+        {
+            --iOpenBrackets;
+        }
+
+        //ds if we reach 0 total we scanned the whole body
+        if( 0 == iOpenBrackets )
+        {
+            //ds return the current token (final link)
+            return pcToken;
+        }
+    }
+
+    //ds return null pointer if nothing was found
+    return 0;
+}
+
+const Token* CCheckStyle::_getLinkInverse( const Token* p_pcTokenEnd ) const
+{
+    //ds characters to check
+    std::string strCharacterStart( "" );
+    const std::string strCharacterEnd( p_pcTokenEnd->str( ) );
+
+    //ds get the correct character for the input
+    if( ")" == strCharacterEnd ){ strCharacterStart = "("; }
+    else if( ">" == strCharacterEnd ){ strCharacterStart = "<"; }
+    else if( "}" == strCharacterEnd ){ strCharacterStart = "{"; }
+    else if( "]" == strCharacterEnd ){ strCharacterStart = "["; }
+
+    //ds bracket counter in order to recursive information
+    int iOpenBrackets( 0 );
+
+    //ds start looping
+    for( const Token* pcToken = p_pcTokenEnd; 0 != pcToken; pcToken = pcToken->previous( ) )
+    {
+        //ds check if an opening bracket is found
+        if( strCharacterStart == pcToken->str( ) )
+        {
+            ++iOpenBrackets;
+        }
+
+        //ds check if a closing bracket is found
+        else if( strCharacterEnd == pcToken->str( ) )
+        {
+            --iOpenBrackets;
+        }
+
+        //ds if we reach 0 total we scanned the whole body
+        if( 0 == iOpenBrackets )
+        {
+            //ds return the current token (final link)
+            return pcToken;
+        }
+    }
+
+    //ds return null pointer if nothing was found
+    return 0;
 }
 
 bool CCheckStyle::_isChecked( const Function* p_cFunction ) const
@@ -828,9 +941,9 @@ bool CCheckStyle::_isChecked( const Function* p_cFunction ) const
     for( std::vector< Function >::const_iterator itFunction = m_vecParsedFunctionList.begin( ); itFunction != m_vecParsedFunctionList.end( ); ++itFunction )
     {
         //ds check the name and type
-        if( itFunction->name( )      == p_cFunction->name( )     &&
-            itFunction->type         == p_cFunction->type        &&
-            itFunction->initArgCount == itFunction->initArgCount )
+        if( itFunction->name( )        == p_cFunction->name( )       &&
+            itFunction->type           == p_cFunction->type          &&
+            itFunction->minArgCount( ) == itFunction->minArgCount( ) )
         {
             //ds if we have a scope check it
             if( 0 != itFunction->functionScope && 0 != p_cFunction->functionScope )

@@ -81,7 +81,7 @@ private:
     //ds provide a description about the checks
     std::string classInfo( ) const
     {
-        return "pepper coding guidelines checks\n";
+        return "pepper Coding Guidelines checks\n";
     }
 
 //ds methods
@@ -102,7 +102,7 @@ private:
     void checkPrefixVariable( const Token* p_pcToken, const Variable* p_pcVariable, const std::string& p_strVariableScopePrefix = "variable" );
 
     //ds check assertions, comments and boost pointer arguments
-    void checkAssert( const Token* p_pcToken );
+    void checkAssert( const Token* p_pcTokenStart, const Token* p_pcTokenEnd );
     void checkComment( const Token* p_pcToken );
     void checkBoostPointer( const Token* p_pcToken );
 
@@ -117,7 +117,11 @@ private:
     const std::string _filterVariableTypeComplete( const std::string& p_strType ) const;
 
     //ds returns a filtered version of the variable type (without *'s and &'s)
-    const std::string _filterVariableTypeKeepNamespace( const std::string& p_strType ) const;
+    const std::string _filterVariableTypeSimple( const std::string& p_strType ) const;
+
+    //ds link search function, the argument is the opening link
+    const Token* _getLink( const Token* p_pcTokenStart ) const;
+    const Token* _getLinkInverse( const Token* p_pcTokenEnd ) const;
 
     //ds check vectors (overloaded for easy readability)
     bool _isChecked( const Function* p_cFunction ) const;

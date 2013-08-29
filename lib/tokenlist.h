@@ -67,6 +67,9 @@ public:
      */
     bool createTokens(std::istream &code, const std::string& file0 = "", const std::string& p_strRawCode = "");
 
+    //ds createTokens for the raw code
+    bool createTokensRaw( const std::string& p_strRawCode );
+
     /** Deallocate list */
     void deallocateTokens();
 

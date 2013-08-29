@@ -2082,38 +2082,75 @@ bool Tokenizer::tokenize(std::istream &code,
         }
     }
 
-    //ds get the custom token list beginning
-    const Token* pcCustomToken( list.getCustomFront( ) );
+    //ds get the custom token list beginning and the regular
+    const Token* pcTokenCustom( list.getCustomFront( ) );
+    const Token* pcTokenRegular( list.front( ) );
 
-    //ds create the additional token list with the custom tokens (the assign operator is not implemented)
-    for( const Token* pcRegularToken = list.front( ); pcRegularToken != 0; pcRegularToken = pcRegularToken->next( ) )
+    //ds current file index to unite tokens
+    unsigned int uCurrentFileIndex( static_cast< unsigned int >( list.getFiles( ).size( ) ) );
+
+    //ds as long as there are tokens in our lists
+    while( 0 != pcTokenCustom || 0 != pcTokenRegular )
     {
-        //ds add the current token to the custom list
-        m_lstCustomTokenList.addtoken( pcRegularToken, pcRegularToken->linenr( ), pcRegularToken->fileIndex( ) );
-
-        //ds check if we still have to add extra tokens and for a matching file id
-        if( 0 != pcCustomToken && pcCustomToken->fileIndex( ) == pcRegularToken->fileIndex( ) )
+        //ds only add the token if the file index matches
+        if( 0 != pcTokenRegular && uCurrentFileIndex == pcTokenRegular->fileIndex( ) )
         {
-            //ds check if we have to add a custom token in between
-            if( 0 != pcRegularToken->next( ) && pcCustomToken->linenr( ) < pcRegularToken->next( )->linenr( ) )
+            //ds add the current regular token to the custom list
+            m_lstCustomTokenList.addtoken( pcTokenRegular, pcTokenRegular->linenr( ), pcTokenRegular->fileIndex( ) );
+
+            //ds check if we have to add a custom token in between if the file id matches
+            if( 0 != pcTokenCustom )
             {
-                //ds add the custom token
-                m_lstCustomTokenList.addtoken( pcCustomToken, pcCustomToken->linenr( ), pcCustomToken->fileIndex( ) );
+                if(        uCurrentFileIndex == pcTokenCustom->fileIndex( )       &&
+                                           0 != pcTokenRegular->next( )           &&
+                    pcTokenCustom->linenr( ) < pcTokenRegular->next( )->linenr( ) )
+                {
+                    //ds add the custom token
+                    m_lstCustomTokenList.addtoken( pcTokenCustom, pcTokenCustom->linenr( ), pcTokenCustom->fileIndex( ) );
 
-                //ds move up in the custom token list
-                pcCustomToken = pcCustomToken->next( );
+                    //ds move up in the custom token list
+                    pcTokenCustom = pcTokenCustom->next( );
+                }
+
+                //ds special case for the last regular token - we dont have to check if the line number is higher
+                else if( uCurrentFileIndex == pcTokenCustom->fileIndex( ) && 0 == pcTokenRegular->next( ) )
+                {
+                    //ds add the custom token
+                    m_lstCustomTokenList.addtoken( pcTokenCustom, pcTokenCustom->linenr( ), pcTokenCustom->fileIndex( ) );
+
+                    //ds move up in the custom token list
+                    pcTokenCustom = pcTokenCustom->next( );
+                }
             }
-        }
-    }
 
-    //ds if there are comments left which are not added yet
-    if( 0 != pcCustomToken )
-    {
-        //ds loop over the remaining tokens and add them
-        for( const Token* pcRemainingCustomToken = pcCustomToken; pcRemainingCustomToken != 0; pcRemainingCustomToken = pcRemainingCustomToken->next( ) )
+            //ds move on with the regular token
+            pcTokenRegular = pcTokenRegular->next( );
+        }
+
+        //ds if all the regular tokens with the current file index has been added check the custom ones
+        else if( 0 != pcTokenCustom && uCurrentFileIndex == pcTokenCustom->fileIndex( ) )
         {
-            //ds add the custom token
-            m_lstCustomTokenList.addtoken( pcRemainingCustomToken, pcRemainingCustomToken->linenr( ), pcRemainingCustomToken->fileIndex( ) );
+            //ds add it because there are no more regular tokens with this file index
+            m_lstCustomTokenList.addtoken( pcTokenCustom, pcTokenCustom->linenr( ), pcTokenCustom->fileIndex( ) );
+
+            //ds move up in the custom token list
+            pcTokenCustom = pcTokenCustom->next( );
+        }
+
+        //ds if nothing matches decrease the file index
+        else
+        {
+            //ds first check if we are done
+            if( 0 == uCurrentFileIndex )
+            {
+                //ds escape
+                break;
+            }
+            else
+            {
+                //ds dangerous with unsigned int
+                --uCurrentFileIndex;
+            }
         }
     }
 

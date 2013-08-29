@@ -132,7 +132,6 @@ void TokenList::addtoken(const Token * tok, const unsigned int lineno, const uns
 
     _back->linenr(lineno);
     _back->fileIndex(fileno);
-
     _back->isUnsigned(tok->isUnsigned());
     _back->isSigned(tok->isSigned());
     _back->isLong(tok->isLong());
@@ -407,150 +406,190 @@ bool TokenList::createTokens(std::istream &code, const std::string& file0, const
         _back->setExpandedMacro(expandedMacro);
     _front->assignProgressValues();
 
+    //ds create additional tokens if raw code is defined
+    if( false == p_strRawCode.empty( ) )
+    {
+        createTokensRaw( p_strRawCode );
+    }
+
+    //ds set relative file paths just now if the raw code is not set else it gets set in the createTokensRaw function
+    else
+    {
+        for(unsigned int i = 1; i < _files.size(); i++)
+            _files[i] = Path::getRelativePath(_files[i], _settings->_basePaths);
+    }
+
+    return true;
+}
+
+bool TokenList::createTokensRaw( const std::string& p_strRawCode )
+{
+    //ds current file index we are working on
+    unsigned int uCurrentFileIndex( 0 );
+
+    //ds set to get file dependent line numbers
+    std::map< unsigned int, unsigned int > mapLineNumbers;
+
+    //ds stack of file indexes to parse (this means, for each new file we add an index and work on that until done, then remove it)
+    std::stack< unsigned int > stRemainingFileIndexes;
+
     //ds start parsing the raw code if available
     if( false == p_strRawCode.empty( ) )
     {
-        //ds fileid should be known
-        bool bFileIDFound( false );
-
-        //ds file id
-        unsigned int uFileIndex( 0 );
-
-        //ds line number
-        unsigned int uLineNumber( 1 );
-
-        //ds get the current fileid
-        for( unsigned int u = 0; u < _files.size( ); ++u )
+        //ds loop over the raw code (with index because we use find functionality)
+        for( unsigned int u = 0; u < p_strRawCode.length( ); ++u )
         {
-            //ds check if the path matches
-            if (Path::sameFileName( _files[u], file0 ) )
+            //ds check for #file or #endfile start
+            if( '#' == p_strRawCode[u] )
             {
-                //ds use this index
-                uFileIndex = u;
+                //ds search a space
+                const unsigned int uSeparator( static_cast< unsigned int >( p_strRawCode.find( ' ', u ) ) );
 
-                //ds we found our fileid
-                bFileIDFound = true;
-            }
-        }
-
-        //ds check if fileid is found
-        if( true == bFileIDFound )
-        {
-            //ds loop over the raw code
-            for( std::string::const_iterator itCharacter = p_strRawCode.begin( ); itCharacter != p_strRawCode.end( ); ++itCharacter )
-            {
-                //ds check for a possible comment beginning
-                if( p_strRawCode.end( ) != ( itCharacter + 1 ) && '/' == *itCharacter )
+                //ds if it worked
+                if( static_cast< unsigned int >( std::string::npos ) != uSeparator )
                 {
-                    //ds check next characters - first case one-line comment
-                    if( '/' == *( itCharacter + 1 ) )
+                    //ds get the file specifier
+                    const std::string strFileSpecifier( p_strRawCode.substr( u, uSeparator-u ) );
+
+                    //ds search for a newline
+                    const unsigned int uEndFilePath( static_cast< unsigned int >( p_strRawCode.find( '\n', uSeparator ) ) );
+
+                    //ds if it worked
+                    if( static_cast< unsigned int >( std::string::npos ) != uEndFilePath )
                     {
-                        //ds add the start
-                        std::string strComment( "/" );
+                        //ds get the filepath
+                        const std::string strFilePath( p_strRawCode.substr( uSeparator+1, uEndFilePath-( uSeparator+1 ) ) );
 
-                        //ds success boolean
-                        bool bWasCommentFound( false );
+                        //ds update the index counter to the new line to avoid redundant cases
+                        u = uEndFilePath;
 
-                        //ds one-line case we just have to seek the endline /n - start looping from the second /
-                        for( std::string::const_iterator itComment = itCharacter + 1; itComment != p_strRawCode.end( ); ++itComment )
+                        //ds determine the case
+                        if( "#file" == strFileSpecifier )
                         {
-                            //ds break if the end of the comment was found (10 newline operator)
-                            if( '\n' == *itComment )
+                            //ds success flag
+                            bool bWasFilePathFound( false );
+
+                            //ds check if this file has been tokenized
+                            for( unsigned int v = 0; v < _files.size( ); ++v )
                             {
-                                //ds update external iterator
-                                itCharacter = itComment;
-
-                                //ds set success
-                                bWasCommentFound = true;
-
-                                //ds escape for loop
-                                break;
-                            }
-                            else
-                            {
-                                //ds add the content as long as we don't reach the endline
-                                strComment += *itComment;
-                            }
-                        }
-
-                        if( true == bWasCommentFound )
-                        {
-                            //ds add the token
-                            addCustomToken( strComment, uLineNumber, uFileIndex, Token::eComment );
-
-                            //ds update line number
-                            ++uLineNumber;
-                        }
-                    }
-
-                    //ds second case multi-line comment
-                    else if( '*' == *( itCharacter + 1 ) )
-                    {
-                        //ds add the start
-                        std::string strComment( "/" );
-
-                        //ds success boolean
-                        bool bWasCommentFound( false );
-
-                        //ds counter for the number of lines of the comment
-                        unsigned int uNumberOfLines( 0 );
-
-                        //ds one-line case we just have to seek the first *//* - start looping from the *
-                        for( std::string::const_iterator itComment = itCharacter + 1; itComment != p_strRawCode.end( ); ++itComment )
-                        {
-                            //ds break if the end of the comment was found
-                            if( p_strRawCode.end( ) != ( itComment + 1 ) && '*' == *itComment &&  '/' == *( itComment + 1 ) )
-                            {
-                                //ds here we want to keep the end in the string
-                                strComment += "*/";
-
-                                //ds update external iterator
-                                itCharacter = itComment;
-
-                                //ds set success
-                                bWasCommentFound = true;
-
-                                //ds escape for loop
-                                break;
-                            }
-                            else
-                            {
-                                //ds add the content as long as we don't reach the *//*
-                                strComment += *itComment;
-
-                                //ds if we reach an endline increment the line number
-                                if( '\n' == *itComment )
+                                if( Path::sameFileName( _files[v], strFilePath ) )
                                 {
-                                    ++uNumberOfLines;
+                                    //ds set variables
+                                    uCurrentFileIndex = v;
+                                    bWasFilePathFound = true;
+
+                                    //ds add it to the stack
+                                    stRemainingFileIndexes.push( v );
                                 }
                             }
+
+                            //ds if the filepath was not found
+                            if( false == bWasFilePathFound )
+                            {
+                                //ds TODO throw, error - right now we just skip this file
+                            }
+
+                            //ds set the line numbers for the current file
+                            mapLineNumbers[uCurrentFileIndex] = 2;
                         }
-
-                        if( true == bWasCommentFound )
+                        else if( "#endfile" == strFileSpecifier && 0 != stRemainingFileIndexes.size( ) )
                         {
-                            //ds add the token
-                            addCustomToken( strComment, uLineNumber, uFileIndex, Token::eComment );
+                            //ds remove the current file index from the stack (it has to match)
+                            if( uCurrentFileIndex == stRemainingFileIndexes.top( ) )
+                            {
+                                stRemainingFileIndexes.pop( );
+                            }
 
-                            //ds update the line number
-                            uLineNumber += uNumberOfLines;
+                            //ds check if any indexes are left now
+                            if( 0 != stRemainingFileIndexes.size( ) )
+                            {
+                                //ds update the current file index to the lower stack
+                                uCurrentFileIndex = stRemainingFileIndexes.top( );
+                            }
                         }
                     }
                 }
+            }
 
-                //ds check if we get a new line
-                else if( '\n' == *itCharacter )
+            //ds check for a possible comment beginning
+            else if( '/' == p_strRawCode[u] && u+1 < p_strRawCode.length( ) )
+            {
+                //ds check next characters - first case one-line comment
+                if( '/' == p_strRawCode[u+1] )
                 {
-                    //ds increment line counter
-                    ++uLineNumber;
+                    //ds in the one-line case we just have to seek the endline /n
+                    const unsigned int uEndLine( static_cast< unsigned int >( p_strRawCode.find( '\n', u ) ) );
+
+                    //ds if we find one get the string
+                    if( static_cast< unsigned int >( std::string::npos ) != uEndLine )
+                    {
+                        const std::string strCommentSingle( p_strRawCode.substr( u, uEndLine-u ) );
+
+                        //ds add the token
+                        addCustomToken( strCommentSingle, mapLineNumbers[uCurrentFileIndex], uCurrentFileIndex, Token::eComment );
+
+                        //ds update current line number
+                        ++mapLineNumbers[uCurrentFileIndex];
+
+                        //ds update the index
+                        u = uEndLine;
+                    }
                 }
+
+                //ds second case multi-line comment
+                else if( '*' == p_strRawCode[u+1] )
+                {
+                    //ds in the multi-line case we just have to seek the final "*/" sequence
+                    const unsigned int uEndComment( static_cast< unsigned int >( p_strRawCode.find( "*/", u ) ) );
+
+                    //ds if we found the end
+                    if( static_cast< unsigned int >( std::string::npos ) != uEndComment )
+                    {
+                        //ds number of lines in comment (for accurate line number information in error)
+                        unsigned int uLinesCommentMulti( 0 );
+
+                        //ds get the lines of the multiline comment by count the newline characters in the sequence
+                        for( unsigned int v = u; v < uEndComment; ++v )
+                        {
+                            //ds if a new line is found
+                            if( '\n' == p_strRawCode[v] )
+                            {
+                                //ds increment the counter
+                                ++uLinesCommentMulti;
+                            }
+                        }
+
+                        //ds get the complete comment
+                        const std::string strCommentMulti( p_strRawCode.substr( u, uEndComment-u ) );
+
+                        //ds add the token
+                        addCustomToken( strCommentMulti, mapLineNumbers[uCurrentFileIndex], uCurrentFileIndex, Token::eComment );
+
+                        //ds update current line number
+                        mapLineNumbers[uCurrentFileIndex] += uLinesCommentMulti ;
+
+                        //ds update the index
+                        u = uEndComment;
+                    }
+                }
+            }
+
+            //ds check if we get a new line
+            else if( '\n' == p_strRawCode[u] )
+            {
+                //ds increment current line counter
+                ++mapLineNumbers[uCurrentFileIndex];
             }
         }
     }
 
-    //ds set relative file paths just now
-    for(unsigned int i = 1; i < _files.size(); i++)
-        _files[i] = Path::getRelativePath(_files[i], _settings->_basePaths);
+    //ds set relative file paths now
+    for( unsigned int i = 1; i < _files.size( ); i++ )
+    {
+        _files[i] = Path::getRelativePath( _files[i], _settings->_basePaths );
+    }
 
+    //ds default is sucess
     return true;
 }
 

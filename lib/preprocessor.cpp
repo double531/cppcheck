@@ -260,7 +260,7 @@ std::string Preprocessor::read(std::istream &istr, const std::string &filename)
     return result;
 }
 
-std::string Preprocessor::read(std::istream &istr, const std::string &filename, std::string& p_strRawCode)
+std::string Preprocessor::read( std::istream &istr, const std::string &filename, std::string& p_strRawCode )
 {
     // The UTF-16 BOM is 0xfffe or 0xfeff.
     unsigned int bom = 0;
@@ -333,6 +333,12 @@ std::string Preprocessor::read(std::istream &istr, const std::string &filename, 
 
     //ds get the raw code here
     p_strRawCode = result;
+
+    //ds enter the file information to the code - add #file at the beginning
+    p_strRawCode = "#file " + filename + "\n" + p_strRawCode;
+
+    //ds and @#endfile at the end
+    p_strRawCode = p_strRawCode + "\n#endfile " + filename;
 
     // ------------------------------------------------------------------------------------------
     //
@@ -1070,8 +1076,8 @@ void Preprocessor::preprocess(std::istream &srcCodeStream, std::string &processe
     if (file0.empty())
         file0 = filename;
 
-    //ds call the overloaded read function to get the raw code
-    processedFile = read(srcCodeStream, filename, p_strRawCode);
+    //ds call the overloaded read function to get the raw code - below all the function calls are executed analogous for the raw code (it is assumed that those functions do not alter class attributes)
+    processedFile = read( srcCodeStream, filename, p_strRawCode );
 
     if (_settings) {
         for (std::list<std::string>::iterator it = _settings->userIncludes.begin();
@@ -1111,6 +1117,17 @@ void Preprocessor::preprocess(std::istream &srcCodeStream, std::string &processe
             "#file \"" + filename + "\"\n" +
             "#line 1\n" +
             processedFile +
+            "#endfile\n"
+            ;
+    }
+
+    //ds copy the forced includes for the raw code too
+    if (!forcedIncludes.empty()) {
+        p_strRawCode =
+            forcedIncludes +
+            "#file \"" + filename + "\"\n" +
+            "#line 1\n" +
+            p_strRawCode +
             "#endfile\n"
             ;
     }
@@ -1160,6 +1177,16 @@ void Preprocessor::preprocess(std::istream &srcCodeStream, std::string &processe
 
         // Remove configurations that are disabled by -U
         handleUndef(resultConfigurations);
+    }
+
+    //ds enable header files for the raw code too
+    if( false == p_strRawCode.empty( ) )
+    {
+        std::list<std::string> pragmaOnce;
+        std::list<std::string> includes;
+
+        //ds here we have to call a non-overloaded version of the include handler because we modified the manner of the function
+        p_strRawCode = handleIncludesRaw( p_strRawCode, filename, includePaths, defs, pragmaOnce, includes );
     }
 }
 
@@ -2346,6 +2373,220 @@ std::string Preprocessor::handleIncludes(const std::string &code, const std::str
     return ostr.str();
 }
 
+std::string Preprocessor::handleIncludesRaw(const std::string &code, const std::string &filePath, const std::list<std::string> &includePaths, std::map<std::string,std::string> &defs, std::list<std::string> &pragmaOnce, std::list<std::string> includes)
+{
+    const std::string path(filePath.substr(0, 1 + filePath.find_last_of("\\/")));
+
+    // current #if indent level.
+    std::stack<bool>::size_type indent = 0;
+
+    // how deep does the #if match? this can never be bigger than "indent".
+    std::stack<bool>::size_type indentmatch = 0;
+
+    // has there been a true #if condition at the current indentmatch level?
+    // then no more #elif or #else can be true before the #endif is seen.
+    std::stack<bool> elseIsTrueStack;
+
+    unsigned int linenr = 0;
+
+    std::set<std::string> undefs = _settings ? _settings->userUndefs : std::set<std::string>();
+
+    if (_errorLogger)
+        _errorLogger->reportProgress(filePath, "Preprocessor (handleIncludes)", 0);
+
+    std::ostringstream ostr;
+    std::istringstream istr(code);
+    std::string line;
+    bool suppressCurrentCodePath = false;
+    while (std::getline(istr,line)) {
+        ++linenr;
+
+        if (_settings && _settings->terminated())
+            return "";
+
+        // has there been a true #if condition at the current indentmatch level?
+        // then no more #elif or #else can be true before the #endif is seen.
+        while (elseIsTrueStack.size() != indentmatch + 1) {
+            if (elseIsTrueStack.size() < indentmatch + 1) {
+                elseIsTrueStack.push(true);
+            } else {
+                elseIsTrueStack.pop();
+            }
+        }
+
+        std::stack<bool>::reference elseIsTrue = elseIsTrueStack.top();
+
+        if (line == "#pragma once") {
+            pragmaOnce.push_back(filePath);
+        } else if (line.compare(0,7,"#ifdef ") == 0) {
+            if (indent == indentmatch) {
+                const std::string tag = getdef(line,true);
+                if (defs.find(tag) != defs.end()) {
+                    elseIsTrue = false;
+                    indentmatch++;
+                } else if (undefs.find(tag) != undefs.end()) {
+                    elseIsTrue = true;
+                    indentmatch++;
+                    suppressCurrentCodePath = true;
+                }
+            }
+            ++indent;
+
+            if (indent == indentmatch + 1)
+                elseIsTrue = true;
+        } else if (line.compare(0,8,"#ifndef ") == 0) {
+            if (indent == indentmatch) {
+                const std::string tag = getdef(line,false);
+                if (defs.find(tag) == defs.end()) {
+                    elseIsTrue = false;
+                    indentmatch++;
+                } else if (undefs.find(tag) != undefs.end()) {
+                    elseIsTrue = false;
+                    indentmatch++;
+                    suppressCurrentCodePath = false;
+                }
+            }
+            ++indent;
+
+            if (indent == indentmatch + 1)
+                elseIsTrue = true;
+
+        } else if (line.compare(0,4,"#if ") == 0) {
+            if (!suppressCurrentCodePath && indent == indentmatch && match_cfg_def(defs, line.substr(4))) {
+                elseIsTrue = false;
+                indentmatch++;
+            }
+            ++indent;
+
+            if (indent == indentmatch + 1)
+                elseIsTrue = true;  // this value doesn't matter when suppressCurrentCodePath is true
+        } else if (line.compare(0,6,"#elif ") == 0 || line.compare(0,5,"#else") == 0) {
+            if (!elseIsTrue) {
+                if (indentmatch == indent) {
+                    indentmatch = indent - 1;
+                }
+            } else {
+                if (indentmatch == indent) {
+                    indentmatch = indent - 1;
+                } else if (indentmatch == indent - 1) {
+                    if (line.compare(0,5,"#else")==0 || match_cfg_def(defs,line.substr(6))) {
+                        indentmatch = indent;
+                        elseIsTrue = false;
+                    }
+                }
+            }
+        } else if (line.compare(0, 6, "#endif") == 0) {
+            if (indent > 0)
+                --indent;
+            if (indentmatch > indent || indent == 0) {
+                indentmatch = indent;
+                elseIsTrue = false;
+                suppressCurrentCodePath = false;
+            }
+        } else if (indentmatch == indent) {
+            if (!suppressCurrentCodePath && line.compare(0, 8, "#define ") == 0) {
+                const unsigned int endOfDefine = 8;
+                std::string::size_type endOfTag = line.find_first_of("( ", endOfDefine);
+                std::string tag;
+
+                // define a symbol
+                if (endOfTag == std::string::npos) {
+                    tag = line.substr(endOfDefine);
+                    defs[tag] = "";
+                } else {
+                    tag = line.substr(endOfDefine, endOfTag-endOfDefine);
+
+                    // define a function-macro
+                    if (line[endOfTag] == '(') {
+                        defs[tag] = "";
+                    }
+                    // define value
+                    else {
+                        ++endOfTag;
+
+                        const std::string& value = line.substr(endOfTag, line.size()-endOfTag);
+
+                        if (defs.find(value) != defs.end())
+                            defs[tag] = defs[value];
+                        else
+                            defs[tag] = value;
+                    }
+                }
+
+                if (undefs.find(tag) != undefs.end()) {
+                    defs.erase(tag);
+                }
+            }
+
+            else if (!suppressCurrentCodePath && line.compare(0,7,"#undef ") == 0) {
+                defs.erase(line.substr(7));
+            }
+
+            else if (!suppressCurrentCodePath && line.compare(0,7,"#error ") == 0) {
+                error(filePath, linenr, line.substr(7));
+            }
+
+            else if (!suppressCurrentCodePath && line.compare(0,9,"#include ")==0) {
+                std::string filename(line.substr(9));
+
+                const HeaderTypes headerType = getHeaderFileName(filename);
+                if (headerType == NoHeader) {
+                    ostr << std::endl;
+                    continue;
+                }
+
+                // try to open file
+                std::string filepath;
+                if (headerType == UserHeader)
+                    filepath = path;
+                std::ifstream fin;
+                if (!openHeader(filename, includePaths, filepath, fin)) {
+                    missingInclude(Path::toNativeSeparators(filePath),
+                                   linenr,
+                                   filename,
+                                   headerType
+                                  );
+                    ostr << std::endl;
+                    continue;
+                }
+
+                // Prevent that files are recursively included
+                if (std::find(includes.begin(), includes.end(), filename) != includes.end()) {
+                    ostr << std::endl;
+                    continue;
+                }
+
+                includes.push_back(filename);
+
+                // Don't include header if it's already included and contains #pragma once
+                if (std::find(pragmaOnce.begin(), pragmaOnce.end(), filename) != pragmaOnce.end()) {
+                    ostr << std::endl;
+                    continue;
+                }
+
+                //ds raw code to set - UGLY but most simple way because we are working with istreams and copying is not trivial
+                std::string strRawCode( "" );
+
+                //ds get the raw code
+                read( fin, filename, strRawCode );
+
+                //ds call the raw handleIncludes with raw code
+                ostr << handleIncludesRaw( strRawCode, filename, includePaths, defs, pragmaOnce, includes );
+
+                //ds go on
+                continue;
+            }
+
+            if (!suppressCurrentCodePath)
+                ostr << line;
+        }
+
+        // A line has been read..
+        ostr << "\n";
+    }
+
+    return ostr.str();
+}
 
 void Preprocessor::handleIncludes(std::string &code, const std::string &filePath, const std::list<std::string> &includePaths)
 {
