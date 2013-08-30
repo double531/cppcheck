@@ -52,7 +52,7 @@ private:
 
 public:
     enum Type {
-        eVariable, eType, eFunction, eName, eComment, // Names: Variable (varId), Type (typeId, later), Function (FuncId, later), Name (unknown identifier) //ds added comment type
+        eVariable, eType, eFunction, eName, eComment, eIndent, // Names: Variable (varId), Type (typeId, later), Function (FuncId, later), Name (unknown identifier) //ds added comment and indent type
         eNumber, eString, eChar, eBoolean, eLiteral, // Literals: Number, String, Character, User defined literal (C++11)
         eArithmeticalOp, eComparisonOp, eAssignmentOp, eLogicalOp, eBitOp, eIncDecOp, eExtendedOp, // Operators: Arithmetical, Comparison, Assignment, Logical, Bitwise, ++/--, Extended
         eBracket, // {, }, <, >: < and > only if link() is set. Otherwise they are comparison operators.

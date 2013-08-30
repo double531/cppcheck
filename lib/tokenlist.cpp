@@ -433,6 +433,9 @@ bool TokenList::createTokensRaw( const std::string& p_strRawCode )
     //ds stack of file indexes to parse (this means, for each new file we add an index and work on that until done, then remove it)
     std::stack< unsigned int > stRemainingFileIndexes;
 
+    //ds maximum stack size, is necessary to keep the comment line numbers exact over n header files
+    unsigned int uEndFileCounter( 0 );
+
     //ds start parsing the raw code if available
     if( false == p_strRawCode.empty( ) )
     {
@@ -488,9 +491,11 @@ bool TokenList::createTokensRaw( const std::string& p_strRawCode )
                             {
                                 //ds TODO throw, error - right now we just skip this file
                             }
-
-                            //ds set the line numbers for the current file
-                            mapLineNumbers[uCurrentFileIndex] = 2;
+                            else
+                            {
+                                //ds set the line numbers for the current file depending on the number of files before the current
+                                mapLineNumbers[uCurrentFileIndex] = uEndFileCounter + static_cast< unsigned int >( _files.size( ) );
+                            }
                         }
                         else if( "#endfile" == strFileSpecifier && 0 != stRemainingFileIndexes.size( ) )
                         {
@@ -498,6 +503,9 @@ bool TokenList::createTokensRaw( const std::string& p_strRawCode )
                             if( uCurrentFileIndex == stRemainingFileIndexes.top( ) )
                             {
                                 stRemainingFileIndexes.pop( );
+
+                                //ds treated an endfile
+                                ++uEndFileCounter;
                             }
 
                             //ds check if any indexes are left now
@@ -571,6 +579,74 @@ bool TokenList::createTokensRaw( const std::string& p_strRawCode )
                         //ds update the index
                         u = uEndComment;
                     }
+                }
+            }
+
+            //ds check for an indent error type 1 (backwards checking)
+            else if( '{' == p_strRawCode[u] )
+            {
+                //ds during the search for the beginning of the {} statement we count the newlines we encounter
+                unsigned int uNewLineCounter( 0 );
+
+                //ds now we have to loop backwards until we engage a character which is not a whitespace: ' ', '\n' or '\t'
+                for( int i = u-1; i >= 0; --i )
+                {
+                    //ds check for a statement start
+                    if(  ' ' != p_strRawCode[i] &&
+                        '\n' != p_strRawCode[i] &&
+                        '\t' != p_strRawCode[i] )
+                    {
+                        //ds we reached the actual beginning of the {} statement, escape
+                        break;
+                    }
+
+                    //ds if we found a newline operator
+                    if( '\n' == p_strRawCode[i] )
+                    {
+                        //ds increment our counter
+                        ++uNewLineCounter;
+                    }
+                }
+
+                //ds before the { we want exactly 1 new line, not more not less
+                if( 1 != uNewLineCounter )
+                {
+                    //ds add an invalid indent token
+                    addCustomToken( "{", mapLineNumbers[uCurrentFileIndex], uCurrentFileIndex, Token::eIndent );
+                }
+            }
+
+            //ds check for an indent error type 2 (backwards checking)
+            else if( '}' == p_strRawCode[u] )
+            {
+                //ds during the search for the beginning of the {} statement we count the newlines we encounter
+                unsigned int uNewLineCounter( 0 );
+
+                //ds now we have to loop backwards until we engage a character which is not a whitespace: ' ', '\n' or '\t'
+                for( int i = u-1; i >= 0; --i )
+                {
+                    //ds check for a statement start
+                    if(  ' ' != p_strRawCode[i] &&
+                        '\n' != p_strRawCode[i] &&
+                        '\t' != p_strRawCode[i] )
+                    {
+                        //ds we reached the actual beginning of the {} statement, escape
+                        break;
+                    }
+
+                    //ds if we found a newline operator
+                    if( '\n' == p_strRawCode[i] )
+                    {
+                        //ds increment our counter
+                        ++uNewLineCounter;
+                    }
+                }
+
+                //ds before the closing } we want 1 new line minimum
+                if( 0 == uNewLineCounter )
+                {
+                    //ds add an invalid indent token
+                    addCustomToken( "}", mapLineNumbers[uCurrentFileIndex], uCurrentFileIndex, Token::eIndent );
                 }
             }
 

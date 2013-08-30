@@ -40,16 +40,20 @@ class CPPCHECKLIB CCheckStyle:public Check
 //ds de/allocation
 public:
 
-    //ds constructor for registration
+    //ds REQUIRED constructor for registration
     CCheckStyle( );
 
-    //ds constructors for test runs
+    //ds REQUIRED constructors for test runs
     CCheckStyle( const Tokenizer* p_Tokenizer, const Settings* p_Settings, ErrorLogger* p_ErrorLogger );
+
+    //ds destructor
+    ~CCheckStyle( );
 
 
 //ds accessors
 public:
 
+    //ds virtual function which gets called from the core
     void runChecks( const Tokenizer* p_Tokenizer, const Settings* p_Settings, ErrorLogger* p_ErrorLogger )
     {
         //ds create a class with the given parameters
@@ -60,7 +64,7 @@ public:
         cChecker.checkComplete( );
     }
 
-    //ds simple checks (is pure virtual)
+    //ds REQUIRED simple checks (is pure virtual)
     void runSimplifiedChecks( const Tokenizer* p_Tokenizer, const Settings* p_Settings, ErrorLogger* p_ErrorLogger )
     {
         //ds nothing to do but suppress warnings ;)
@@ -70,7 +74,7 @@ public:
 //ds virtual inheritance
 private:
 
-    //ds framework method to display error messages
+    //ds REQUIRED framework method to display error messages
     void getErrorMessages( ErrorLogger* p_ErrorLogger, const Settings* p_Settings ) const
     {
         CCheckStyle c( 0, p_Settings, p_ErrorLogger );
@@ -78,7 +82,7 @@ private:
         c.checkCompleteError( 0, "", Severity::style );
     }
 
-    //ds provide a description about the checks
+    //ds REQUIRED provide a description about the checks
     std::string classInfo( ) const
     {
         return "pepper Coding Guidelines checks\n";
@@ -104,6 +108,7 @@ private:
     //ds check assertions, comments and boost pointer arguments
     void checkAssert( const Token* p_pcTokenStart, const Token* p_pcTokenEnd );
     void checkComment( const Token* p_pcToken );
+    void checkIndent( const Token* p_pcToken );
     void checkBoostPointer( const Token* p_pcToken );
 
     //ds identify boost::shared_ptrs and arrays
@@ -113,8 +118,8 @@ private:
     //ds retrieves the complete variable type consisting of multiple tokens (e.g std::string)
     const std::string _getVariableType( const Variable* p_pcVariable ) const;
 
-    //ds returns a completely filtered version of the variable type (without *'s and &'s and namespaces)
-    const std::string _filterVariableTypeComplete( const std::string& p_strType ) const;
+    //ds returns a completely filtered version of the variable type (without *'s and &'s templates and some special behavior for keytypes) - the resulting string conforms the whitelist indexes
+    const std::string _filterVariableTypeForWhiteList( const std::string& p_strType ) const;
 
     //ds returns a filtered version of the variable type (without *'s and &'s)
     const std::string _filterVariableTypeSimple( const std::string& p_strType ) const;

@@ -151,6 +151,9 @@ unsigned int CppCheck::processFile(const std::string& filename)
         std::list<std::string> configurations;
         std::string filedata = "";
 
+        //ds empty the raw code
+        m_strRawCode.clear( );
+
         if (!_fileContent.empty()) {
             // File content was given as a string
             std::istringstream iss(_fileContent);

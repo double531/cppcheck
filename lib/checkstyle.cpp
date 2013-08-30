@@ -35,12 +35,20 @@ namespace
 //ds constructor for registration
 CCheckStyle::CCheckStyle( ):Check( "Style" )
 {
-    //ds nothing to do
+    //ds clear all containers
+    m_vecParsedFunctionList.clear( );
+    m_vecParsedVariableList.clear( );
+    m_mapWhitelist.clear( );
 }
 
 //ds constructor for test runs
 CCheckStyle::CCheckStyle( const Tokenizer* p_Tokenizer, const Settings* p_Settings, ErrorLogger* p_ErrorLogger ):Check( "Style", p_Tokenizer, p_Settings, p_ErrorLogger )
 {
+    //ds clear all containers
+    m_vecParsedFunctionList.clear( );
+    m_vecParsedVariableList.clear( );
+    m_mapWhitelist.clear( );
+
     //ds initialize whitelist
 
     //ds illegal types (magic keyword "forbidden" triggers error message - this is necessary because undefined types do not indicate an error)
@@ -50,51 +58,62 @@ CCheckStyle::CCheckStyle( const Tokenizer* p_Tokenizer, const Settings* p_Settin
     m_mapWhitelist[ "unsigned short" ] = "forbidden";
 
     //ds hungarian notation
-    m_mapWhitelist[ "bool" ]          = "b";   //1
-    m_mapWhitelist[ "TByteStream" ]   = "bs";  //2
-    m_mapWhitelist[ "class" ]         = "c";   //3
-    m_mapWhitelist[ "struct" ]        = "c";   //4
-    m_mapWhitelist[ "char" ]          = "ch";  //5
-    m_mapWhitelist[ "unsigned char" ] = "ch";  //6
-    m_mapWhitelist[ "double" ]        = "d";   //7
-    m_mapWhitelist[ "enum" ]          = "e";   //8
-    m_mapWhitelist[ "HANDLE" ]        = "h";   //9
-    m_mapWhitelist[ "int" ]           = "i";   //10
-    m_mapWhitelist[ "size_type" ]     = "n" ;  //11
-    m_mapWhitelist[ "TPath" ]         = "pth"; //12
-    m_mapWhitelist[ "unsigned int" ]  = "u";   //13
-    m_mapWhitelist[ "string" ]        = "str"; //14
-    m_mapWhitelist[ "std::string" ]   = "str"; //14
-    m_mapWhitelist[ "TString" ]       = "str"; //15
-    m_mapWhitelist[ "type" ]          = "t";   //16
-    m_mapWhitelist[ "TTime" ]         = "tm";  //17
-    m_mapWhitelist[ "word" ]          = "w";   //18
-    m_mapWhitelist[ "pointer" ]       = "p";   //19
+    m_mapWhitelist[ "bool" ]          = "b";
+    m_mapWhitelist[ "TByteStream" ]   = "bs";
+    m_mapWhitelist[ "class" ]         = "c";
+    m_mapWhitelist[ "struct" ]        = "c";
+    m_mapWhitelist[ "char" ]          = "ch";
+    m_mapWhitelist[ "unsigned char" ] = "ch";
+    m_mapWhitelist[ "double" ]        = "d";
+    m_mapWhitelist[ "enum" ]          = "e";
+    m_mapWhitelist[ "HANDLE" ]        = "h";
+    m_mapWhitelist[ "int" ]           = "i";
+    m_mapWhitelist[ "size_type" ]     = "n" ;
+    m_mapWhitelist[ "TPath" ]         = "pth";
+    m_mapWhitelist[ "unsigned int" ]  = "u";
+    m_mapWhitelist[ "string" ]        = "str";
+    m_mapWhitelist[ "std::string" ]   = "str";
+    m_mapWhitelist[ "TString" ]       = "str";
+    m_mapWhitelist[ "type" ]          = "t";
+    m_mapWhitelist[ "TTime" ]         = "tm";
+    m_mapWhitelist[ "word" ]          = "w";
+    m_mapWhitelist[ "pointer" ]       = "p";
 
     //ds containers
-    m_mapWhitelist[ "vector" ]        = "vec";  //20
-    m_mapWhitelist[ "map" ]           = "map";  //21
-    m_mapWhitelist[ "multimap" ]      = "mmap"; //22
-    m_mapWhitelist[ "list" ]          = "lst";  //23
-    m_mapWhitelist[ "pair" ]          = "pr";   //24
-    m_mapWhitelist[ "set" ]           = "set";  //25
-    m_mapWhitelist[ "tuple" ]         = "tpl";  //26
-    m_mapWhitelist[ "iterator" ]      = "it";   //26.1
-    m_mapWhitelist[ "std::vector" ]   = "vec";  //20
-    m_mapWhitelist[ "std::map" ]      = "map";  //21
-    m_mapWhitelist[ "std::multimap" ] = "mmap"; //22
-    m_mapWhitelist[ "std::list" ]     = "lst";  //23
-    m_mapWhitelist[ "std::pair" ]     = "pr";   //24
-    m_mapWhitelist[ "std::set" ]      = "set";  //25
-    m_mapWhitelist[ "std::tuple" ]    = "tpl";  //26
-    m_mapWhitelist[ "std::iterator" ] = "it";   //26.1
+    m_mapWhitelist[ "vector" ]         = "vec";
+    m_mapWhitelist[ "map" ]            = "map";
+    m_mapWhitelist[ "multimap" ]       = "mmap";
+    m_mapWhitelist[ "list" ]           = "lst";
+    m_mapWhitelist[ "pair" ]           = "pr";
+    m_mapWhitelist[ "set" ]            = "set";
+    m_mapWhitelist[ "tuple" ]          = "tpl";
+    m_mapWhitelist[ "iterator" ]       = "it";
+    m_mapWhitelist[ "const_iterator" ] = "it";
+
+
+    //ds containers with namespaces
+    m_mapWhitelist[ "std::vector" ]   = "vec";
+    m_mapWhitelist[ "std::map" ]      = "map";
+    m_mapWhitelist[ "std::multimap" ] = "mmap";
+    m_mapWhitelist[ "std::list" ]     = "lst";
+    m_mapWhitelist[ "std::pair" ]     = "pr";
+    m_mapWhitelist[ "std::set" ]      = "set";
+    m_mapWhitelist[ "std::tuple" ]    = "tpl";
 
     //ds custom
-    m_mapWhitelist[ "array" ]              = "arr"; //27
-    m_mapWhitelist[ "method" ]             = "_";   //28
-    m_mapWhitelist[ "attribute" ]          = "m_";  //29
-    m_mapWhitelist[ "parameter" ]          = "p_";  //30
-    m_mapWhitelist[ "global variable" ]    = "g_";  //31
+    m_mapWhitelist[ "array" ]              = "arr";
+    m_mapWhitelist[ "method" ]             = "_";
+    m_mapWhitelist[ "attribute" ]          = "m_";
+    m_mapWhitelist[ "parameter" ]          = "p_";
+    m_mapWhitelist[ "global variable" ]    = "g_";
+}
+
+CCheckStyle::~CCheckStyle( )
+{
+    //ds clear all containers
+    m_vecParsedFunctionList.clear( );
+    m_vecParsedVariableList.clear( );
+    m_mapWhitelist.clear( );
 }
 
 void CCheckStyle::dumpTokens( )
@@ -245,6 +264,13 @@ void CCheckStyle::checkComplete( )
             checkComment( pcCurrent );
         }
 
+        //ds look for an indent error
+        else if( Token::eIndent == pcCurrent->type( ) )
+        {
+            //ds start indent check
+            checkIndent( pcCurrent );
+        }
+
         //ds always check for boost pointer initializations (unfortunately cppcheck does not recognize boost::shared_ptr< char > test( new char[123] );)
         if( "shared_ptr" == pcCurrent->str( ) || "scoped_ptr" == pcCurrent->str( ) )
         {
@@ -329,7 +355,7 @@ void CCheckStyle::checkPrefixVariable( const Token* p_pcToken, const Variable* p
     const std::string strTypeName( _getVariableType( p_pcVariable ) );
 
     //ds get the correct type prefix from the type name (e.g. u, str) - we call the whitelist only with filtered variable types, e.g no int******
-    std::string strCorrectTypePrefix( m_mapWhitelist[_filterVariableTypeComplete( strTypeName )] );
+    std::string strCorrectTypePrefix( m_mapWhitelist[_filterVariableTypeForWhiteList( strTypeName )] );
 
     //ds check no type prefix could not be found - this is the case for all user defined classes/structs not covered in the whitelist
     if( true == strCorrectTypePrefix.empty( ) )
@@ -341,16 +367,16 @@ void CCheckStyle::checkPrefixVariable( const Token* p_pcToken, const Variable* p
             strCorrectTypePrefix = m_mapWhitelist["class"];
         }
 
-        //ds check if its a pointer (if the token before the name is a * because the isPointer( ) flag is not set for unknown types) and if it is an unknown class
-        else if( "*"  == p_pcVariable->typeEndToken( )->str( )              &&
-                false == p_pcVariable->typeStartToken( )->isStandardType( ) )
+        //ds check if its a pointer or address (if the token before the name is a * or a &) because cppcheck does not recognize unknown classes with these tokens following
+        else if( ( "*"  == p_pcVariable->typeEndToken( )->str( ) || "&"  == p_pcVariable->typeEndToken( )->str( ) ) &&
+                  false == p_pcVariable->typeStartToken( )->isStandardType( )                                       )
         {
             //ds trigger the class prefix
             strCorrectTypePrefix = m_mapWhitelist["class"];
         }
         else
         {
-            //ds trigger error message (only informative error)
+            //ds trigger error message (only informative error - however this should almost never be the case because every unknown structure gets detected as a class/struct and receives the c prefix)
             checkCompleteError( p_pcToken, "no matching prefix found for type: " + strTypeName, Severity::information );
         }
     }
@@ -500,6 +526,16 @@ void CCheckStyle::checkAssert( const Token* p_pcTokenStart, const Token* p_pcTok
 
 void CCheckStyle::checkComment( const Token* p_pcToken )
 {
+    //ds check input
+    if( 0 == p_pcToken )
+    {
+        //ds invalid call (TODO throw)
+        std::cout << "<CCheckStyle>[checkComment] error: received null pointer Token" << std::endl;
+
+        //ds skip
+        return;
+    }
+
     //ds get comment
     const std::string strComment( p_pcToken->str( ) );
 
@@ -555,14 +591,57 @@ void CCheckStyle::checkComment( const Token* p_pcToken )
     }
 }
 
+void CCheckStyle::checkIndent( const Token* p_pcToken )
+{
+    //ds check input
+    if( 0 == p_pcToken )
+    {
+        //ds invalid call (TODO throw)
+        std::cout << "<CCheckStyle>[checkIndent] error: received null pointer Token" << std::endl;
+
+        //ds skip
+        return;
+    }
+
+    //ds we do not have to detect an error here, the overhanded token is already an invalid indent - determine the case
+    if( "{" == p_pcToken->str( ) )
+    {
+        //ds inform as detailed as possible
+        checkCompleteError( p_pcToken, "invalid indent format for opening character: '{' - please make sure there is exactly one newline character before the opening character", Severity::style );
+    }
+    else if( "}" == p_pcToken->str( ) )
+    {
+        //ds inform as detailed as possible
+        checkCompleteError( p_pcToken, "invalid indent format for closing character: '}' - please make sure there is one newline character minimum before the closing character", Severity::style );
+    }
+    else
+    {
+        //ds invalid call (TODO throw)
+        std::cout << "<CCheckStyle>[checkIndent] error: invalid function call" << std::endl;
+
+        //ds skip
+        return;
+    }
+}
+
 //ds TODO implement the parsing of boost::shared_ptr< char > pPointer1( new char[10] ); then the UGLY checkBoostPointer( ) can be removed
 void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
 {
+    //ds check input
+    if( 0 == p_pcToken )
+    {
+        //ds invalid call (TODO throw)
+        std::cout << "<CCheckStyle>[checkBoostPointer] error: received null pointer Token" << std::endl;
+
+        //ds skip
+        return;
+    }
+
     //ds configurations are assumed:
     //ds 1: boost::shared_ptr< char > pPointer1( new char[10] ); -> cppcheck can not parse this
     //ds 2: boost::shared_ptr< char > pPointer1 = new char[10]; -> cppcheck parses to: boost::shared_ptr< char > pPointer1; pPointer1 = new char[10];
 
-    //ds get the pointer type (shared or scoped)
+    //ds get the pointer type (shared_ptr or scoped_ptr)
     const std::string strPointerName( p_pcToken->str( ) );
 
     //ds get the end of the type definition
@@ -634,6 +713,9 @@ void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
     //ds check if new call was found
     bool bIsNewCallFound( false );
 
+    //ds new position token
+    const Token* pcTokenNew( 0 );
+
     //ds if the end token is valid
     if( 0 != pcEndToken )
     {
@@ -644,12 +726,16 @@ void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
             if( "<" == itToken->str( ) )
             {
                 ++iOpenBrackets;
+
+                continue;
             }
 
             //ds check if a closing bracket is found
             if( ">" == itToken->str( ) )
             {
                 --iOpenBrackets;
+
+                continue;
             }
 
             //ds as long as there are open brackets record the information in between
@@ -661,6 +747,9 @@ void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
             //ds look for a new call (this is no violation yet)
             if( "new" == itToken->str( ) )
             {
+                //ds save the token
+                pcTokenNew = itToken;
+
                 bIsNewCallFound = true;
             }
 
@@ -675,11 +764,11 @@ void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
             {
                 std::string strNewTypeName( "" );
 
-                //ds loop backwards to get the name (TODO there should be a smarter way to get the type, since we detect the "new" Token before)
-                for( const Token* pcInnerToken = itToken->previous( ); 0 != pcInnerToken; pcInnerToken = pcInnerToken->previous( ) )
+                //ds get the complete type name after the new call
+                for( const Token* pcInnerToken = pcTokenNew->next( ); 0 != pcInnerToken; pcInnerToken = pcInnerToken->next( ) )
                 {
-                    //ds break if we land at the new operator
-                    if( "new" == pcInnerToken->str( ) )
+                    //ds break if we land at the array start
+                    if( itToken == pcInnerToken )
                     {
                         break;
                     }
@@ -696,8 +785,11 @@ void CCheckStyle::checkBoostPointer( const Token* p_pcToken )
                 }
                 else
                 {
-                    //ds trigger error message - this should not happen if the code compiles
+                    //ds trigger error message 1 - this should not happen if the code compiles
                     checkCompleteError( p_pcToken, "invalid array initialization of class: boost::" + strPointerName + "< " + strTypeName + " > " + strVariableName + " with new < " + strNewTypeName + " > make sure the same type is used for the array allocation", Severity::style );
+
+                    //ds trigger error message 2
+                    checkCompleteError( p_pcToken, "forbidden array initialization of class: boost::" + strPointerName + "< " + strTypeName + " > " + strVariableName + " - please use: boost::shared_array< " + strTypeName  + " >", Severity::style );
                 }
             }
         }
@@ -798,7 +890,7 @@ const std::string CCheckStyle::_getVariableType( const Variable* p_pcVariable ) 
     return strType;
 }
 
-const std::string CCheckStyle::_filterVariableTypeComplete( const std::string& p_strType ) const
+const std::string CCheckStyle::_filterVariableTypeForWhiteList( const std::string& p_strType ) const
 {
     //ds final string to return - filter already some characters out
     std::string strTypeFiltered( _filterVariableTypeSimple( p_strType ) );
@@ -810,13 +902,25 @@ const std::string CCheckStyle::_filterVariableTypeComplete( const std::string& p
     if( static_cast< unsigned int >( std::string::npos ) != uStartTemplate )
     {
         //ds first check if an iterator is present (since it overwrites all prefixes -> std::map< etc >::iterator is always iterator for the whitelist)
-        if( "iterator" == p_strType.substr( p_strType.length( ) - 8, 8 ) )
+        if( 13 < p_strType.length( ) && "const_iterator" == p_strType.substr( p_strType.length( ) - 14, 14 ) )
+        {
+            //ds simplify the type
+            strTypeFiltered = "const_iterator";
+        }
+
+        //ds regular iterator
+        else if( 7 < p_strType.length( ) && "iterator" == p_strType.substr( p_strType.length( ) - 8, 8 ) )
         {
             //ds always iterator
             strTypeFiltered = "iterator";
         }
 
-        //ds TODO implement more filtering based on the whitelist
+        //ds for all other cases we cut off the whole template part (since it does not matter for the prefix)
+        else
+        {
+            //ds get the type before the template: (e.g. std::pair< SomeThing, SomeOtherThing > -> std::pair)
+            strTypeFiltered = p_strType.substr( 0, uStartTemplate );
+        }
     }
 
     return strTypeFiltered;
@@ -842,6 +946,15 @@ const std::string CCheckStyle::_filterVariableTypeSimple( const std::string& p_s
 
 const Token* CCheckStyle::_getLink( const Token* p_pcTokenStart ) const
 {
+    //ds check input
+    if( 0 == p_pcTokenStart )
+    {
+        //ds invalid call (TODO throw)
+        std::cout << "<CCheckStyle>[_getLink] error: received null pointer Token" << std::endl;
+
+        return 0;
+    }
+
     //ds characters to check
     const std::string strCharacterStart( p_pcTokenStart->str( ) );
     std::string strCharacterEnd( "" );
@@ -884,6 +997,15 @@ const Token* CCheckStyle::_getLink( const Token* p_pcTokenStart ) const
 
 const Token* CCheckStyle::_getLinkInverse( const Token* p_pcTokenEnd ) const
 {
+    //ds check input
+    if( 0 == p_pcTokenEnd )
+    {
+        //ds invalid call (TODO throw)
+        std::cout << "<CCheckStyle>[_getLinkInverse] error: received null pointer Token" << std::endl;
+
+        return 0;
+    }
+
     //ds characters to check
     std::string strCharacterStart( "" );
     const std::string strCharacterEnd( p_pcTokenEnd->str( ) );
@@ -930,7 +1052,7 @@ bool CCheckStyle::_isChecked( const Function* p_cFunction ) const
     if( 0 == p_cFunction )
     {
         //ds invalid call (TODO throw)
-        std::cout << "<CCheckStyle>[_isAlreadyParsed] error: received null pointer Function" << std::endl;
+        std::cout << "<CCheckStyle>[_isChecked] error: received null pointer Function" << std::endl;
 
         return false;
     }
@@ -971,7 +1093,7 @@ bool CCheckStyle::_isChecked( const Variable* p_cVariable ) const
     if( 0 == p_cVariable )
     {
         //ds invalid call (TODO throw)
-        std::cout << "<CCheckStyle>[_isAlreadyParsed] error: received null pointer Variable" << std::endl;
+        std::cout << "<CCheckStyle>[_isChecked] error: received null pointer Variable" << std::endl;
 
         return false;
     }
