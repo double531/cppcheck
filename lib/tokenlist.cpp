@@ -588,7 +588,7 @@ bool TokenList::createTokensRaw( const std::string& p_strRawCode )
                 //ds during the search for the beginning of the {} statement we count the newlines we encounter
                 unsigned int uNewLineCounter( 0 );
 
-                //ds now we have to loop backwards until we engage a character which is not a whitespace: ' ', '\n' or '\t'
+                //ds now we have to loop backwards until we engage a character which is not a whitespace: ' ', '\n' or '\t' - an regular integer is used to avoid unsigned comparison warnings and roll points
                 for( int i = u-1; i >= 0; --i )
                 {
                     //ds check for a statement start

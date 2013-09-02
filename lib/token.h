@@ -277,7 +277,7 @@ public:
     //ds check for single or multi-line comments
     bool isSingleLine( ) const
     {
-        if( "//" == _str.substr( 0, 2 ) )
+        if( 1 < _str.length( ) && "//" == _str.substr( 0, 2 ) )
         {
             return true;
         }

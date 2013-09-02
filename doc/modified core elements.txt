@@ -1,0 +1,40 @@
+file: cppcheck/lib/cppcheck.h
+line: 216 added string for raw code (needed to get the code from the preprocessor in the subsequent instances)
+
+file: cppcheck/lib/cppcheck.cpp
+line: 150+ overhand raw code by reference to an overloaded preprocessor function (which fills the raw code object)
+      362 call overloaded tokenize function with the raw code (after that the raw code is no longer needed)
+
+
+file: cppcheck/lib/preprocessor.h
+line: 93 overloaded the regular preprocess function to fill a string by reference
+      99 overloaded the read function (gets called within preprocess) to get the raw code
+      248 implemented handleIncludesRaw as a modified version of the regular function to process the include tree with raw code
+
+file: cppcheck/lib/preprocessor.cpp
+line: 335+ extraction of the raw code and simple adjustments - the raw code gets just extracted before the comments get removed (removeComments)
+
+
+file: cppcheck/lib/token.h
+line: 55 added 2 new types: eComment and eIndent for those specific tokens
+      278 implemented isSingleLine function for eComment tokens
+
+file: cppcheck/lib/token.cpp
+line: 114 added correct detection of comments as eComment type
+
+
+file: cppcheck/lib/tokenize.h
+line: 89 modified tokenize function to accept raw code for the token generation if desired
+      744+ added the custom token list as a separate token list containing all tokens derived from the raw code + the regular ones (can be accessed in the check class)
+
+file: cppcheck/lib/tokenize.cpp
+line 2086+ implemented the complete procedure to add the regular token list to the custom one
+
+
+file: cppcheck/lib/tokenlist.h
+line 55 implemented addCustomToken function for the creation of the custom tokens from raw code (gets called within createTokens)
+     68+ modified the regular createTokens function to accept raw code and call the createTokensRaw function (which builds up the custom tokens)
+     143+ added the front and back for the custom token list
+
+file: cppcheck/lib/tokenlist.cpp
+line 425 createTokensRaw is the function where all the custom tokens get created - PLACE TO IMPLEMENT THE DETECTION AND CREATION OF NEW TOKENS
